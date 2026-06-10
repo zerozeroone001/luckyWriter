@@ -55,6 +55,52 @@
         </div>
       </section>
 
+      <section v-else-if="activeTab === 'prompts'" class="setting-section">
+        <div class="section-header">
+          <h2>系统提示词管理</h2>
+          <button class="btn-primary" @click="openPromptDialog()">添加提示词</button>
+        </div>
+
+        <div v-if="promptsLoading" class="loading">加载中...</div>
+        <div v-else-if="prompts.length === 0" class="empty-logs">暂无提示词</div>
+        <div v-else class="prompts-container">
+          <div class="prompt-type-selector">
+            <label>提示词类型：</label>
+            <select v-model="activePromptType">
+              <option v-for="type in promptTypes" :key="type" :value="type">{{ type }}</option>
+            </select>
+            <button class="btn-text" @click="showTypeManager = true">管理类型</button>
+          </div>
+
+          <div class="prompt-tabs">
+            <button
+              v-for="prompt in filteredPrompts"
+              :key="prompt.id"
+              class="prompt-tab"
+              :class="{ active: activePromptId === prompt.id }"
+              @click="activePromptId = prompt.id"
+            >
+              {{ prompt.name }}
+            </button>
+          </div>
+
+          <div v-if="selectedPrompt" class="prompt-detail">
+            <div class="prompt-detail-header">
+              <h3>{{ selectedPrompt.name }}</h3>
+              <span v-if="selectedPrompt.use_case" class="prompt-tag">{{ selectedPrompt.use_case }}</span>
+            </div>
+            <div class="prompt-detail-content">
+              <textarea
+                :value="selectedPrompt.system_prompt"
+                class="prompt-textarea"
+                rows="12"
+                @blur="updatePromptContent($event, selectedPrompt.id)"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section v-else-if="activeTab === 'backup'" class="setting-section">
         <h2>备份设置</h2>
         <div class="setting-item checkbox-item">
@@ -155,6 +201,79 @@
       </section>
     </div>
 
+    <div v-if="showPromptDialog" class="modal-overlay" @click.self="closePromptDialog">
+      <div class="log-dialog">
+        <div class="dialog-header">
+          <h3>{{ editingPrompt ? '编辑提示词' : '添加提示词' }}</h3>
+          <button type="button" class="close-button" @click="closePromptDialog">×</button>
+        </div>
+        <form @submit.prevent="savePrompt">
+          <div class="form-group">
+            <label>名称</label>
+            <input v-model="promptForm.name" type="text" required />
+          </div>
+          <div class="form-group">
+            <label>提示词类型</label>
+            <select v-model="promptForm.prompt_type" required>
+              <option v-for="type in promptTypes" :key="type" :value="type">{{ type }}</option>
+              <option value="__new__">+ 新增类型</option>
+            </select>
+            <input
+              v-if="promptForm.prompt_type === '__new__'"
+              v-model="newPromptType"
+              type="text"
+              placeholder="输入新类型名称"
+              style="margin-top: 8px"
+              @blur="handleNewType"
+            />
+          </div>
+          <div class="form-group">
+            <label>提示词角色</label>
+            <input v-model="promptForm.prompt_role" type="text" list="role-list" placeholder="例如：资深网文作家、角色设计专家" required />
+            <datalist id="role-list">
+              <option v-for="role in promptRoles" :key="role" :value="role" />
+            </datalist>
+          </div>
+          <div class="form-group">
+            <label>使用场景</label>
+            <input v-model="promptForm.use_case" type="text" placeholder="例如：plan_novel、expand_character" />
+          </div>
+          <div class="form-group">
+            <label>系统提示词</label>
+            <textarea v-model="promptForm.system_prompt" rows="8" required></textarea>
+          </div>
+          <div class="dialog-actions">
+            <button type="button" class="btn-secondary" @click="closePromptDialog">取消</button>
+            <button type="submit" class="btn-primary">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div v-if="showTypeManager" class="modal-overlay" @click.self="showTypeManager = false">
+      <div class="log-dialog">
+        <div class="dialog-header">
+          <h3>类型管理</h3>
+          <button type="button" class="close-button" @click="showTypeManager = false">×</button>
+        </div>
+        <div class="type-manager-content">
+          <div class="form-group">
+            <label>添加新类型</label>
+            <div style="display: flex; gap: 8px;">
+              <input v-model="newTypeName" type="text" placeholder="输入类型名称" @keyup.enter="addType" />
+              <button type="button" class="btn-primary" @click="addType">添加</button>
+            </div>
+          </div>
+          <div class="type-list">
+            <div v-for="type in promptTypes" :key="type" class="type-item">
+              <span>{{ type }}</span>
+              <button type="button" class="btn-text danger" @click="deleteType(type)">删除</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div v-if="selectedLog" class="modal-overlay" @click.self="selectedLog = null">
       <div class="log-dialog">
         <div class="dialog-header">
@@ -183,20 +302,35 @@
         </div>
       </div>
     </div>
+    <ConfirmDialog ref="confirmDialog" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { logsApi } from '../api'
 import { useThemeStore } from '../stores/theme'
 import type { AIGenerationLog, GenerationLogsQuery } from '../types'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
-type SettingsTab = 'appearance' | 'basic' | 'backup' | 'logs' | 'about'
+type SettingsTab = 'appearance' | 'basic' | 'prompts' | 'backup' | 'logs' | 'about'
+
+interface SystemPrompt {
+  id: number
+  name: string
+  prompt_type: string
+  prompt_role: string
+  system_prompt: string
+  use_case?: string
+  is_default: boolean
+  created_at: string
+  updated_at: string
+}
 
 const tabs: Array<{ key: SettingsTab; label: string }> = [
   { key: 'appearance', label: '外观' },
   { key: 'basic', label: '基本' },
+  { key: 'prompts', label: '系统提示词' },
   { key: 'backup', label: '备份' },
   { key: 'logs', label: '日志' },
   { key: 'about', label: '关于' },
@@ -215,6 +349,55 @@ const generationTypes = [
 
 const themeStore = useThemeStore()
 const activeTab = ref<SettingsTab>('appearance')
+const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
+
+const prompts = ref<SystemPrompt[]>([])
+const promptsLoading = ref(false)
+const showPromptDialog = ref(false)
+const editingPrompt = ref<SystemPrompt | null>(null)
+const promptForm = ref({
+  name: '',
+  prompt_type: 'default',
+  prompt_role: '',
+  system_prompt: '',
+  use_case: ''
+})
+const promptTypes = ref<string[]>([])
+const promptRoles = ref<string[]>([])
+const activePromptType = ref('default')
+const activePromptId = ref<number | null>(null)
+const newPromptType = ref('')
+const showTypeManager = ref(false)
+const newTypeName = ref('')
+
+const filteredPrompts = computed(() => {
+  return prompts.value.filter(p => p.prompt_type === activePromptType.value)
+})
+
+const selectedPrompt = computed(() => {
+  return prompts.value.find(p => p.id === activePromptId.value) || null
+})
+
+// 监听类型切换，自动选中第一个提示词
+watch(activePromptType, () => {
+  const filtered = prompts.value.filter(p => p.prompt_type === activePromptType.value)
+  if (filtered.length > 0) {
+    activePromptId.value = filtered[0].id
+  } else {
+    activePromptId.value = null
+  }
+})
+
+const handleNewType = () => {
+  if (newPromptType.value.trim()) {
+    promptForm.value.prompt_type = newPromptType.value.trim()
+    if (!promptTypes.value.includes(promptForm.value.prompt_type)) {
+      promptTypes.value.push(promptForm.value.prompt_type)
+    }
+    newPromptType.value = ''
+  }
+}
+
 const logs = ref<AIGenerationLog[]>([])
 const logsLoading = ref(false)
 const logsError = ref('')
@@ -242,6 +425,140 @@ const switchTab = (tab: SettingsTab) => {
   activeTab.value = tab
   if (tab === 'logs' && logs.value.length === 0) {
     loadLogs()
+  }
+  if (tab === 'prompts' && prompts.value.length === 0) {
+    loadPrompts()
+  }
+}
+
+const loadPrompts = async () => {
+  promptsLoading.value = true
+  try {
+    const [promptsRes, typesRes, rolesRes] = await Promise.all([
+      fetch('http://localhost:8000/api/prompts/'),
+      fetch('http://localhost:8000/api/prompts/types/'),
+      fetch('http://localhost:8000/api/prompts/roles/')
+    ])
+    prompts.value = await promptsRes.json()
+    promptTypes.value = await typesRes.json()
+    promptRoles.value = await rolesRes.json()
+
+    // 自动选中第一个提示词
+    if (prompts.value.length > 0) {
+      activePromptId.value = prompts.value[0].id
+    }
+  } catch (error) {
+    console.error('加载提示词失败:', error)
+  } finally {
+    promptsLoading.value = false
+  }
+}
+
+const openPromptDialog = (prompt?: SystemPrompt) => {
+  if (prompt) {
+    editingPrompt.value = prompt
+    promptForm.value = {
+      name: prompt.name,
+      prompt_type: prompt.prompt_type,
+      prompt_role: prompt.prompt_role,
+      system_prompt: prompt.system_prompt,
+      use_case: prompt.use_case || ''
+    }
+  } else {
+    editingPrompt.value = null
+    promptForm.value = { name: '', prompt_type: 'default', prompt_role: '', system_prompt: '', use_case: '' }
+  }
+  showPromptDialog.value = true
+}
+
+const closePromptDialog = () => {
+  showPromptDialog.value = false
+  editingPrompt.value = null
+}
+
+const savePrompt = async () => {
+  try {
+    if (editingPrompt.value) {
+      await fetch(`http://localhost:8000/api/prompts/${editingPrompt.value.id}/`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(promptForm.value)
+      })
+    } else {
+      await fetch('http://localhost:8000/api/prompts/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(promptForm.value)
+      })
+    }
+    await loadPrompts()
+    closePromptDialog()
+  } catch (error) {
+    console.error('保存提示词失败:', error)
+  }
+}
+
+const deletePrompt = async (id: number) => {
+  const confirmed = await confirmDialog.value?.show({
+    title: '删除提示词',
+    message: '确定要删除这个系统提示词吗？',
+    confirmText: '删除',
+    type: 'danger'
+  })
+
+  if (!confirmed) return
+
+  try {
+    await fetch(`http://localhost:8000/api/prompts/${id}/`, { method: 'DELETE' })
+    await loadPrompts()
+  } catch (error) {
+    console.error('删除提示词失败:', error)
+  }
+}
+
+const addType = () => {
+  const name = newTypeName.value.trim()
+  if (name && !promptTypes.value.includes(name)) {
+    promptTypes.value.push(name)
+    activePromptType.value = name
+    newTypeName.value = ''
+  }
+}
+
+const deleteType = async (type: string) => {
+  const count = prompts.value.filter(p => p.prompt_type === type).length
+  const confirmed = await confirmDialog.value?.show({
+    title: '删除类型',
+    message: `确定要删除类型"${type}"吗？${count > 0 ? `该类型下有 ${count} 个提示词。` : ''}`,
+    confirmText: '删除',
+    type: 'danger'
+  })
+
+  if (!confirmed) return
+
+  promptTypes.value = promptTypes.value.filter(t => t !== type)
+  if (activePromptType.value === type && promptTypes.value.length > 0) {
+    activePromptType.value = promptTypes.value[0]
+  }
+}
+
+const updatePromptContent = async (event: Event, id: number) => {
+  const textarea = event.target as HTMLTextAreaElement
+  const newContent = textarea.value.trim()
+  const prompt = prompts.value.find(p => p.id === id)
+
+  if (!prompt || newContent === prompt.system_prompt) return
+
+  try {
+    await fetch(`http://localhost:8000/api/prompts/${id}/`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...prompt, system_prompt: newContent })
+    })
+    prompt.system_prompt = newContent
+  } catch (error) {
+    console.error('保存提示词失败:', error)
+    textarea.value = prompt.system_prompt
   }
 }
 
@@ -331,7 +648,7 @@ const formatRequestParams = (params?: string) => {
 
 <style scoped>
 .settings {
-  max-width: 1080px;
+  max-width: 75%;
   margin: 0 auto;
   padding: 24px;
 }
@@ -666,6 +983,219 @@ const formatRequestParams = (params?: string) => {
 
 .btn-link {
   padding: 5px 10px;
+}
+
+.prompts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.prompts-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.prompt-type-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.prompt-type-selector label {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.prompt-type-selector select {
+  padding: 8px 12px;
+  color: var(--text-primary);
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  min-width: 150px;
+}
+
+.prompt-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding-bottom: 8px;
+}
+
+.prompt-tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.prompt-tabs::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.prompt-tab {
+  padding: 8px 16px;
+  background: var(--panel-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.prompt-tab:hover {
+  background: var(--theme-color-soft);
+  color: var(--theme-color);
+}
+
+.prompt-tab.active {
+  background: var(--theme-color);
+  color: white;
+  border-color: var(--theme-color);
+}
+
+.prompt-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.prompt-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.prompt-detail-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.prompt-textarea {
+  width: 100%;
+  padding: 12px;
+  background: var(--panel-bg-soft);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-family: var(--font-mono, 'SF Mono', Monaco, 'Cascadia Code', monospace);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 200px;
+  transition: all 0.2s;
+}
+
+.prompt-textarea:focus {
+  background: var(--panel-bg);
+  border-color: var(--theme-color);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--theme-color-soft);
+}
+
+.prompt-tag {
+  padding: 4px 10px;
+  background: var(--theme-color-soft);
+  color: var(--theme-color);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.prompt-detail-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.prompt-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-text {
+  color: var(--theme-color);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-text:hover {
+  color: var(--theme-color-hover);
+}
+
+.btn-text.danger {
+  color: var(--danger-color);
+}
+
+.type-manager-content {
+  padding: 20px;
+}
+
+.type-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.type-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: var(--panel-bg-soft);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.type-item span {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.form-group textarea {
+  resize: vertical;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
 }
 
 .modal-overlay {

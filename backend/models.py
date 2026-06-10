@@ -132,10 +132,11 @@ class SystemPreset(Base):
     __tablename__ = "system_presets"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    preset_name = Column(String(100), nullable=False, unique=True, comment="预设名称")
-    description = Column(Text, comment="预设描述")
+    name = Column(String(100), nullable=False, comment="预设名称")
+    prompt_type = Column(String(50), default="default", comment="提示词类型")
+    prompt_role = Column(String(100), nullable=False, comment="提示词角色")
     system_prompt = Column(Text, nullable=False, comment="系统提示词内容")
-    use_case = Column(String(100), comment="使用场景：outline/character/content/summary")
+    use_case = Column(String(100), comment="使用场景")
     is_default = Column(Boolean, default=False, comment="是否默认")
     created_at = Column(DateTime, default=func.now(), comment="创建时间")
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")

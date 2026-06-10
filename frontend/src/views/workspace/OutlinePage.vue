@@ -254,6 +254,53 @@
       </div>
     </div>
 
+    <div v-if="showPreviewDialog" class="dialog-overlay" @click.self="showPreviewDialog = false">
+      <div class="preview-dialog">
+        <div class="dialog-header">
+          <h2>大纲预览</h2>
+          <button type="button" class="close-btn" @click="showPreviewDialog = false">×</button>
+        </div>
+
+        <div class="preview-tabs">
+          <button
+            v-for="(outline, index) in previewOutlines"
+            :key="index"
+            class="preview-tab"
+            :class="{ active: activePreviewIndex === index }"
+            @click="activePreviewIndex = index"
+          >
+            {{ outline.title }}
+          </button>
+        </div>
+
+        <div v-if="previewOutlines[activePreviewIndex]" class="preview-content">
+          <textarea
+            v-model="previewOutlines[activePreviewIndex].plot_summary"
+            class="preview-textarea"
+            rows="15"
+            placeholder="情节梗概"
+          ></textarea>
+        </div>
+
+        <div class="preview-suggestion">
+          <label>修改建议（可选）</label>
+          <textarea
+            v-model="previewSuggestion"
+            rows="3"
+            placeholder="输入修改建议后，点击重新生成"
+          ></textarea>
+        </div>
+
+        <div class="dialog-actions">
+          <button type="button" class="btn-secondary" @click="regenerateOutlines" :disabled="isRegenerating">
+            {{ isRegenerating ? '重新生成中...' : '重新生成' }}
+          </button>
+          <button type="button" class="btn-secondary" @click="showPreviewDialog = false">取消</button>
+          <button type="button" class="btn-primary" @click="confirmOutlines">确认入库</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="showOutlineDialog" class="dialog-overlay" @click.self="closeOutlineDialog">
       <div class="dialog">
         <h2>{{ editingOutlineId ? '编辑大纲项' : '新增大纲项' }}</h2>
@@ -370,6 +417,11 @@ const planRequest = ref({
   target_volumes: 5,
   style_requirements: '',
 })
+const showPreviewDialog = ref(false)
+const previewOutlines = ref<any[]>([])
+const activePreviewIndex = ref(0)
+const previewSuggestion = ref('')
+const isRegenerating = ref(false)
 
 const isAiBusy = computed(() => isGenerating.value || isGeneratingVolumeChapters.value)
 const activeStreamedContent = computed(() => isGeneratingVolumeChapters.value ? volumeChapterStreamedContent.value : streamedContent.value)
@@ -581,7 +633,14 @@ const handlePlanNovel = async () => {
       async () => {
         isGenerating.value = false
         await loadOutlines()
-        expandAllVolumes()
+        const loaded = outlines.value.filter(o => o.outline_type === 'volume')
+        if (loaded.length > 0) {
+          previewOutlines.value = loaded.map(o => ({ ...o }))
+          activePreviewIndex.value = 0
+          showPreviewDialog.value = true
+        } else {
+          expandAllVolumes()
+        }
       },
       (error) => {
         isGenerating.value = false
@@ -727,6 +786,45 @@ const toggleChapter = (chapterId: number) => {
 
 const expandAllVolumes = () => {
   expandedVolumeIds.value = Object.fromEntries(volumeOutlines.value.map((volume) => [volume.id, true]))
+}
+
+const regenerateOutlines = async () => {
+  if (!previewSuggestion.value.trim()) {
+    alert('请输入修改建议')
+    return
+  }
+
+  isRegenerating.value = true
+  try {
+    await aiApi.planNovelStream(
+      {
+        novel_id: props.novelId,
+        ...planRequest.value,
+        style_requirements: previewSuggestion.value,
+      },
+      (chunk) => {},
+      async () => {
+        await loadOutlines()
+        const loaded = outlines.value.filter(o => o.outline_type === 'volume')
+        previewOutlines.value = loaded.map(o => ({ ...o }))
+        activePreviewIndex.value = 0
+        previewSuggestion.value = ''
+        isRegenerating.value = false
+      },
+      (error) => {
+        isRegenerating.value = false
+        outlineError.value = `重新生成失败：${error}`
+      }
+    )
+  } catch (error) {
+    isRegenerating.value = false
+    outlineError.value = getErrorMessage(error, '重新生成失败')
+  }
+}
+
+const confirmOutlines = () => {
+  showPreviewDialog.value = false
+  expandAllVolumes()
 }
 
 const sortOutlines = (firstOutline: Outline, secondOutline: Outline) => {
@@ -1145,6 +1243,117 @@ const batchDeleteOutlines = async () => {
 
 .dialog h2 {
   margin: 0 0 20px;
+}
+
+.preview-dialog {
+  width: 90%;
+  max-width: 900px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--dialog-bg);
+  border-radius: 10px;
+  box-shadow: var(--shadow-soft);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dialog-header h2 {
+  margin: 0;
+}
+
+.close-btn {
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: var(--text-primary);
+}
+
+.preview-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 16px 24px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.preview-tab {
+  padding: 8px 16px;
+  background: var(--panel-bg-soft);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.preview-tab:hover {
+  background: var(--theme-color-soft);
+  color: var(--theme-color);
+}
+
+.preview-tab.active {
+  background: var(--theme-color);
+  color: white;
+  border-color: var(--theme-color);
+}
+
+.preview-content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.preview-textarea {
+  width: 100%;
+  min-height: 300px;
+  padding: 12px;
+  background: var(--panel-bg-soft);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.preview-suggestion {
+  padding: 0 24px 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.preview-suggestion label {
+  display: block;
+  margin: 16px 0 8px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.preview-suggestion textarea {
+  width: 100%;
+  padding: 10px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
 }
 
 .outline-context-card {
