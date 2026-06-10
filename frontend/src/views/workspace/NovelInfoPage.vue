@@ -171,7 +171,7 @@
           ref="dialogInput"
           v-model="dialogValue"
           :placeholder="dialogPlaceholder"
-          rows="4"
+          rows="8"
           :disabled="isGenerating"
         ></textarea>
         <button v-if="!generatedContent && !isGenerating" class="btn-primary btn-full" @click="startGenerate">开始生成</button>
@@ -782,7 +782,7 @@ const closeDialog = () => {
 }
 
 .dialog-box {
-  width: 500px;
+  width: 60%;
   max-width: 90vw;
   padding: 24px;
   background: var(--card-bg);

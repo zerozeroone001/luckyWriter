@@ -59,6 +59,11 @@
     </div>
 
     <div v-else class="novel-grid">
+      <div class="inspiration-card" @click="openInspirationMode">
+        <div class="inspiration-icon">✨</div>
+        <h3>灵感模式</h3>
+        <p>AI 对话引导创作</p>
+      </div>
       <div
         v-for="novel in filteredNovels"
         :key="novel.id"
@@ -150,6 +155,34 @@
         </form>
       </div>
     </div>
+
+    <div v-if="showInspirationDialog" class="dialog-overlay" @click.self="closeInspirationDialog">
+      <div class="inspiration-dialog">
+        <div class="dialog-header">
+          <h2>✨ 灵感模式</h2>
+          <button class="btn-create-novel" :disabled="isGenerating" @click="generateFromConversation">
+            创建小说
+          </button>
+        </div>
+        <div ref="chatContainer" class="chat-container">
+          <div v-for="(msg, index) in inspirationMessages" :key="index" class="chat-message" :class="msg.role">
+            <div class="message-content">{{ msg.content }}</div>
+          </div>
+        </div>
+        <div class="chat-input-area">
+          <textarea
+            v-model="userInput"
+            placeholder="输入你的想法..."
+            :disabled="isGenerating"
+            rows="3"
+            @keydown.enter.exact.prevent="sendMessage"
+          ></textarea>
+          <button :disabled="isGenerating || !userInput.trim()" @click="sendMessage">
+            {{ isGenerating ? '生成中...' : '发送' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -175,6 +208,19 @@ const statusFilter = ref('all')
 const genreFilter = ref('all')
 const sortBy = ref<SortBy>('updated_desc')
 const newNovel = ref<NovelCreate>(createDefaultNovel())
+
+const showInspirationDialog = ref(false)
+const inspirationStep = ref(0)
+const inspirationMessages = ref<Array<{ role: 'ai' | 'user'; content: string }>>([])
+const userInput = ref('')
+const isGenerating = ref(false)
+const chatContainer = ref<HTMLDivElement | null>(null)
+const inspirationData = ref({
+  title: '',
+  synopsis: '',
+  style_prompt: '',
+  genre: '',
+})
 
 const availableGenres = computed(() => {
   const genres = novels.value
@@ -356,6 +402,277 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error) return error.message || fallback
   return fallback
 }
+
+const openInspirationMode = () => {
+  showInspirationDialog.value = true
+  inspirationStep.value = 0
+  inspirationMessages.value = [
+    {
+      role: 'ai',
+      content: '你好！我是你的小说创作助手。\n\n我可以帮你：梳理故事创意、生成剧情大纲、设计角色人物、创作章节内容、提供写作建议等。\n\n告诉我你的想法，我们一起创作吧！'
+    }
+  ]
+  userInput.value = ''
+  inspirationData.value = { title: '', synopsis: '', style_prompt: '', genre: '' }
+}
+
+const closeInspirationDialog = () => {
+  if (isGenerating.value) return
+  showInspirationDialog.value = false
+}
+
+const sendMessage = async () => {
+  const message = userInput.value.trim()
+  if (!message || isGenerating.value) return
+
+  inspirationMessages.value.push({ role: 'user', content: message })
+  userInput.value = ''
+  isGenerating.value = true
+
+  setTimeout(() => {
+    if (chatContainer.value) {
+      chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+    }
+  }, 50)
+
+  try {
+    const messagesForApi = inspirationMessages.value.map(m => ({
+      role: m.role === 'ai' ? 'assistant' : 'user',
+      content: m.content
+    }))
+
+    const response = await fetch('http://localhost:8000/api/ai/inspiration-chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: messagesForApi })
+    })
+
+    let aiReply = ''
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    inspirationMessages.value.push({ role: 'ai', content: '' })
+    const aiMsgIndex = inspirationMessages.value.length - 1
+
+    if (reader) {
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const event = JSON.parse(line.slice(6))
+            if (event.type === 'chunk') {
+              aiReply += event.content
+              inspirationMessages.value[aiMsgIndex].content = aiReply
+              setTimeout(() => {
+                if (chatContainer.value) {
+                  chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+                }
+              }, 10)
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, '对话失败')
+    inspirationMessages.value.push({ role: 'ai', content: `对话失败：${errorMessage.value}` })
+  } finally {
+    isGenerating.value = false
+  }
+
+  setTimeout(() => {
+    if (chatContainer.value) {
+      chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+    }
+  }, 50)
+}
+
+const generateFromConversation = async () => {
+  isGenerating.value = true
+
+  const conversationText = inspirationMessages.value
+    .map(m => `${m.role === 'user' ? '用户' : 'AI'}：${m.content}`)
+    .join('\n\n')
+
+  const genreMatch = conversationText.match(/(玄幻|都市|科幻|言情|历史|武侠|仙侠|奇幻|军事|游戏|悬疑|推理)/i)
+  const genre = genreMatch ? genreMatch[1] : '未分类'
+  inspirationData.value.genre = genre
+
+  try {
+    const decoder = new TextDecoder()
+
+    inspirationMessages.value.push({ role: 'ai', content: '正在生成小说标题...' })
+    const titleResponse = await fetch('http://localhost:8000/api/ai/generate-title-from-conversation/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation: conversationText, genre })
+    })
+
+    let title = ''
+    const titleReader = titleResponse.body?.getReader()
+    if (titleReader) {
+      let buffer = ''
+      while (true) {
+        const { done, value } = await titleReader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const event = JSON.parse(line.slice(6))
+            if (event.type === 'chunk') {
+              title += event.content
+              inspirationMessages.value[inspirationMessages.value.length - 1].content = `正在生成小说标题...\n\n${title}`
+            }
+          }
+        }
+      }
+    }
+    inspirationData.value.title = title.trim()
+    inspirationMessages.value[inspirationMessages.value.length - 1].content = `✓ 标题：${title.trim()}`
+
+    inspirationMessages.value.push({ role: 'ai', content: '正在生成小说简介...' })
+    const synopsisResponse = await fetch('http://localhost:8000/api/ai/generate-synopsis-from-conversation/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: inspirationData.value.title, genre, conversation: conversationText })
+    })
+
+    let synopsis = ''
+    const synopsisReader = synopsisResponse.body?.getReader()
+    if (synopsisReader) {
+      let buffer = ''
+      while (true) {
+        const { done, value } = await synopsisReader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const event = JSON.parse(line.slice(6))
+            if (event.type === 'chunk') {
+              synopsis += event.content
+              inspirationMessages.value[inspirationMessages.value.length - 1].content = `正在生成小说简介...\n\n${synopsis}`
+            }
+          }
+        }
+      }
+    }
+    inspirationData.value.synopsis = synopsis.trim()
+    inspirationMessages.value[inspirationMessages.value.length - 1].content = `✓ 简介：\n${synopsis.trim()}`
+
+    inspirationMessages.value.push({ role: 'ai', content: '正在生成风格提示词...' })
+    const styleResponse = await fetch('http://localhost:8000/api/ai/generate-style-prompt-from-conversation/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: inspirationData.value.title, genre, synopsis: inspirationData.value.synopsis, conversation: conversationText })
+    })
+
+    let stylePrompt = ''
+    const styleReader = styleResponse.body?.getReader()
+    if (styleReader) {
+      let buffer = ''
+      while (true) {
+        const { done, value } = await styleReader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const event = JSON.parse(line.slice(6))
+            if (event.type === 'chunk') {
+              stylePrompt += event.content
+              inspirationMessages.value[inspirationMessages.value.length - 1].content = `正在生成风格提示词...\n\n${stylePrompt}`
+            }
+          }
+        }
+      }
+    }
+    inspirationData.value.style_prompt = stylePrompt.trim()
+    inspirationMessages.value[inspirationMessages.value.length - 1].content = `✓ 风格提示词：\n${stylePrompt.trim()}`
+
+    await createNovelFromInspiration()
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, '生成失败')
+    inspirationMessages.value.push({ role: 'ai', content: `生成失败：${errorMessage.value}` })
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+const createNovelFromInspiration = async () => {
+  try {
+    const payload = {
+      title: inspirationData.value.title,
+      genre: inspirationData.value.genre,
+      synopsis: inspirationData.value.synopsis,
+      style_prompt: inspirationData.value.style_prompt,
+      author: '默认作者',
+      target_words: 1000000
+    }
+
+    await novelStore.createNovel(payload)
+    const newNovel = novels.value[0]
+
+    if (newNovel) {
+      const conversationText = inspirationMessages.value
+        .map(m => `${m.role === 'user' ? '用户' : 'AI'}：${m.content}`)
+        .join('\n\n')
+
+      inspirationMessages.value.push({ role: 'ai', content: '正在生成剧情大纲...' })
+
+      const outlineResponse = await fetch('http://localhost:8000/api/ai/generate-outline-from-conversation/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ novel_id: newNovel.id, conversation: conversationText })
+      })
+
+      let outline = ''
+      const decoder = new TextDecoder()
+      const outlineReader = outlineResponse.body?.getReader()
+      if (outlineReader) {
+        let buffer = ''
+        while (true) {
+          const { done, value } = await outlineReader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const event = JSON.parse(line.slice(6))
+              if (event.type === 'chunk') {
+                outline += event.content
+                inspirationMessages.value[inspirationMessages.value.length - 1].content = `正在生成剧情大纲...\n\n${outline}`
+              }
+            }
+          }
+        }
+      }
+
+      inspirationMessages.value[inspirationMessages.value.length - 1].content = '✓ 剧情大纲已生成'
+      inspirationMessages.value.push({ role: 'ai', content: '🎉 小说创建成功！正在跳转到工作区...' })
+
+      setTimeout(() => {
+        router.push(`/novel/${newNovel.id}`)
+        showInspirationDialog.value = false
+      }, 1500)
+    }
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, '创建小说失败')
+    inspirationMessages.value.push({ role: 'ai', content: `创建失败：${errorMessage.value}` })
+  }
+}
 </script>
 
 <style scoped>
@@ -481,6 +798,42 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 20px;
+}
+
+.inspiration-card {
+  background: linear-gradient(135deg, var(--success-bg), var(--info-bg));
+  border: 2px dashed var(--success-color);
+  border-radius: 10px;
+  padding: 40px 20px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.inspiration-card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-soft);
+}
+
+.inspiration-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.inspiration-card h3 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  color: var(--text-primary);
+}
+
+.inspiration-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
 }
 
 .novel-card {
@@ -699,6 +1052,139 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 25px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 25px;
+}
+
+.inspiration-dialog {
+  background: var(--card-bg);
+  border-radius: 8px;
+  padding: 30px;
+  width: 60%;
+  max-width: 90%;
+  height: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.dialog-header h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.btn-create-novel {
+  padding: 8px 20px;
+  background: var(--success-color);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-create-novel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-create-novel:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--success-color) 84%, var(--text-primary));
+}
+
+.chat-container {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 20px;
+  padding: 10px;
+  background: var(--panel-bg-soft);
+  border-radius: 6px;
+}
+
+.chat-message {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  max-width: 80%;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.chat-message.ai {
+  background: var(--info-bg);
+  border: 1px solid var(--info-border);
+  margin-right: auto;
+}
+
+.chat-message.user {
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  margin-left: auto;
+  text-align: right;
+}
+
+.message-content {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.chat-input-area {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.chat-input-area textarea {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--card-bg);
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+}
+
+.chat-input-area input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--card-bg);
+}
+
+.chat-input-area button {
+  padding: 10px 24px;
+  background: var(--success-color);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.chat-input-area button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chat-input-area button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--success-color) 84%, var(--text-primary));
 }
 
 @media (max-width: 900px) {

@@ -135,6 +135,33 @@ class PolishSynopsisRequest(BaseModel):
     current_synopsis: str
 
 
+class InspirationChatRequest(BaseModel):
+    messages: list[dict[str, str]]
+
+
+class GenerateTitleFromConversationRequest(BaseModel):
+    conversation: str
+    genre: str
+
+
+class GenerateSynopsisFromConversationRequest(BaseModel):
+    title: str
+    genre: str
+    conversation: str
+
+
+class GenerateStylePromptFromConversationRequest(BaseModel):
+    title: str
+    genre: str
+    synopsis: str
+    conversation: str
+
+
+class GenerateOutlineFromConversationRequest(BaseModel):
+    novel_id: int
+    conversation: str
+
+
 class GenerateContentRequest(BaseModel):
     novel_id: int
     chapter_id: int
@@ -2169,6 +2196,278 @@ async def polish_style_prompt_stream(
                     "novel_id": request.novel_id,
                     "model_id": model.id,
                     "generation_type": "style_prompt_polish",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
+            ):
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
+
+@router.post("/inspiration-chat/stream")
+async def inspiration_chat_stream(
+    request: InspirationChatRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """灵感模式对话（流式）"""
+    messages = [{"role": msg["role"], "content": msg["content"]} for msg in request.messages]
+
+    system_prompt = """你是一位专业的小说创作助手，帮助作者完成创作的各个环节。
+
+你的能力包括：
+- 帮助作者梳理和完善故事创意
+- 生成和优化剧情大纲
+- 设计角色人物卡
+- 创作小说片段和章节内容
+- 分析故事结构和节奏
+- 提供写作建议和灵感
+
+与作者自然对话，倾听需求，提供专业建议。不要机械提问，根据对话灵活响应。"""
+
+    channel, model = await get_enabled_ai_model(db)
+
+    async def generate_stream():
+        try:
+            conversation_history = "\n".join([f"{m['role']}: {m['content']}" for m in messages[:-1]])
+            current_prompt = messages[-1]["content"] if messages else ""
+            full_prompt = f"{conversation_history}\nuser: {current_prompt}" if conversation_history else current_prompt
+
+            async for chunk in ai_service.generate_streaming(
+                prompt=full_prompt,
+                system_prompt=system_prompt,
+                provider=channel.provider,
+                model=model.model_id,
+                temperature=0.8,
+                max_tokens=800,
+                api_key=channel.api_key,
+                base_url=channel.base_url,
+                log_context={
+                    "model_id": model.id,
+                    "generation_type": "inspiration_chat",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
+            ):
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
+
+@router.post("/generate-title-from-conversation/stream")
+async def generate_title_from_conversation_stream(
+    request: GenerateTitleFromConversationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """根据对话记录生成小说标题（流式）"""
+    prompt = f"""根据以下用户创作对话，提取并生成一个小说标题：
+
+类型：{request.genre}
+对话记录：
+{request.conversation}
+
+请只输出标题本身，不要带引号或其他说明，标题应该精简且有吸引力，6-15字为宜。"""
+
+    system_prompt = "你是一位小说策划编辑，擅长从创作想法中提炼标题。"
+    channel, model = await get_enabled_ai_model(db)
+
+    async def generate_stream():
+        try:
+            async for chunk in ai_service.generate_streaming(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                provider=channel.provider,
+                model=model.model_id,
+                temperature=0.8,
+                max_tokens=100,
+                api_key=channel.api_key,
+                base_url=channel.base_url,
+                log_context={
+                    "model_id": model.id,
+                    "generation_type": "title_from_conversation",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
+            ):
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
+
+@router.post("/generate-style-prompt-from-conversation/stream")
+async def generate_style_prompt_from_conversation_stream(
+    request: GenerateStylePromptFromConversationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """根据对话记录生成系统风格提示词（流式）"""
+    prompt = f"""根据以下小说创作对话，生成系统风格提示词：
+
+标题：{request.title}
+类型：{request.genre}
+简介：{request.synopsis}
+对话记录：
+{request.conversation}
+
+请生成一个100-200字的系统风格提示词，用于指导AI创作时保持统一的写作风格、叙事节奏、语言特点和文学性。只输出提示词内容，不要输出其他说明。"""
+
+    system_prompt = "你是一位文学编辑，擅长为小说制定风格指南。"
+    channel, model = await get_enabled_ai_model(db)
+
+    async def generate_stream():
+        try:
+            async for chunk in ai_service.generate_streaming(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                provider=channel.provider,
+                model=model.model_id,
+                temperature=0.7,
+                max_tokens=500,
+                api_key=channel.api_key,
+                base_url=channel.base_url,
+                log_context={
+                    "model_id": model.id,
+                    "generation_type": "style_prompt_from_conversation",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
+            ):
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
+
+@router.post("/generate-outline-from-conversation/stream")
+async def generate_outline_from_conversation_stream(
+    request: GenerateOutlineFromConversationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """根据对话记录生成卷级大纲（流式）"""
+    novel = await _get_novel_or_404(db, request.novel_id)
+
+    result = await db.execute(select(Outline).where(Outline.novel_id == request.novel_id))
+    existing_outlines = result.scalars().all()
+    for outline in existing_outlines:
+        await db.delete(outline)
+    await db.flush()
+
+    prompt = f"""根据以下小说创作对话，生成卷级剧情大纲：
+
+小说：{novel.title}
+类型：{novel.genre or '未指定'}
+简介：{novel.synopsis or '暂无'}
+风格提示：{novel.style_prompt or '暂无'}
+目标字数：{novel.target_words}字
+对话记录：
+{request.conversation}
+
+请严格按以下 Markdown 格式输出5卷大纲：
+
+## 第1卷：卷标题
+### 卷概要
+用 3-5 句话概括本卷阶段目标、核心冲突、重要转折、高潮节点和结尾钩子。
+
+### 关键事件
+- 关键事件1
+- 关键事件2
+- 关键事件3
+- 关键事件4
+
+要求：
+1. 必须输出5卷大纲
+2. 不要输出章节列表或角色列表
+3. 根据对话内容设计剧情走向"""
+
+    system_prompt = f"你是一位资深网文作家，擅长{novel.genre or '各类'}小说创作。"
+    if novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
+    channel, model = await get_enabled_ai_model(db)
+
+    async def generate_stream():
+        accumulated_text = []
+        try:
+            async for chunk in ai_service.generate_streaming(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                provider=channel.provider,
+                model=model.model_id,
+                temperature=0.75,
+                max_tokens=4000,
+                api_key=channel.api_key,
+                base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "outline_from_conversation",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
+            ):
+                accumulated_text.append(chunk)
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+
+            full_text = "".join(accumulated_text)
+            outlines_created = await _parse_and_save_volume_outlines(db, request.novel_id, full_text)
+            await db.commit()
+            yield f"data: {json.dumps({'type': 'done', 'result': {'outlines_count': outlines_created}}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            await db.rollback()
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
+
+@router.post("/generate-synopsis-from-conversation/stream")
+async def generate_synopsis_from_conversation_stream(
+    request: GenerateSynopsisFromConversationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """根据对话记录生成小说简介（流式）"""
+    prompt = f"""根据以下用户创作对话，生成小说简介：
+
+标题：{request.title}
+类型：{request.genre}
+对话记录：
+{request.conversation}
+
+请生成一个150-300字的小说简介，包含背景设定、主角、核心冲突和故事看点。只输出简介内容，不要输出其他说明。"""
+
+    system_prompt = "你是一位小说策划编辑，擅长撰写吸引读者的小说简介。"
+    channel, model = await get_enabled_ai_model(db)
+
+    async def generate_stream():
+        try:
+            async for chunk in ai_service.generate_streaming(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                provider=channel.provider,
+                model=model.model_id,
+                temperature=0.75,
+                max_tokens=600,
+                api_key=channel.api_key,
+                base_url=channel.base_url,
+                log_context={
+                    "model_id": model.id,
+                    "generation_type": "synopsis_from_conversation",
                     "channel_name": channel.name,
                     "channel_provider": channel.provider,
                     "model_name": model.model_name,

@@ -313,6 +313,33 @@ export interface PolishChapterContentRequest {
   save?: boolean
 }
 
+export interface InspirationChatRequest {
+  messages: Array<{ role: string; content: string }>
+}
+
+export interface GenerateTitleFromConversationRequest {
+  conversation: string
+  genre: string
+}
+
+export interface GenerateSynopsisFromConversationRequest {
+  title: string
+  genre: string
+  conversation: string
+}
+
+export interface GenerateStylePromptFromConversationRequest {
+  title: string
+  genre: string
+  synopsis: string
+  conversation: string
+}
+
+export interface GenerateOutlineFromConversationRequest {
+  novel_id: number
+  conversation: string
+}
+
 export interface GenerateCharacterImageRequest {
   character_id: number
   style?: string

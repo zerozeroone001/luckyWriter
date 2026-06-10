@@ -205,7 +205,7 @@
           </div>
           <div class="form-group">
             <label>风格要求（可选）</label>
-            <textarea v-model="planRequest.style_requirements" rows="3" :disabled="isGenerating"></textarea>
+            <textarea v-model="planRequest.style_requirements" rows="12" :disabled="isGenerating"></textarea>
           </div>
           <div class="form-actions">
             <button type="button" class="btn-secondary" :disabled="isGenerating" @click="showPlanDialog = false">取消</button>
@@ -1118,7 +1118,7 @@ const batchDeleteOutlines = async () => {
 }
 
 .dialog {
-  width: 500px;
+  width: 60%;
   max-width: 90%;
   max-height: 90vh;
   overflow-y: auto;
