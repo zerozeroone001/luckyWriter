@@ -69,8 +69,10 @@ const goBack = () => {
   flex-direction: column;
   justify-content: space-between;
   width: 200px;
-  color: white;
-  background: #2c3e50;
+  color: var(--text-primary);
+  background: var(--panel-bg);
+  border-right: 1px solid var(--border-color);
+  box-shadow: 1px 0 18px rgba(31, 41, 55, 0.05);
 }
 
 .nav-menu {
@@ -80,37 +82,47 @@ const goBack = () => {
 }
 
 .nav-item {
-  padding: 15px 20px;
-  color: inherit;
+  margin: 4px 12px;
+  padding: 14px 16px;
+  color: var(--text-secondary);
   text-align: left;
   background: transparent;
   border: none;
+  border-radius: 10px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s, color 0.2s;
 }
 
 .nav-item:hover {
-  background: #34495e;
+  color: var(--theme-color);
+  background: var(--theme-color-soft);
 }
 
 .nav-item.active {
-  background: #3498db;
+  color: var(--theme-color);
+  background: var(--theme-color-soft);
+  font-weight: 700;
 }
 
 .btn-back {
   margin: 20px;
   padding: 10px;
-  color: white;
-  background: #95a5a6;
-  border: none;
-  border-radius: 5px;
+  color: var(--text-secondary);
+  background: var(--panel-bg-soft);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
   cursor: pointer;
+}
+
+.btn-back:hover {
+  color: var(--theme-color);
+  border-color: var(--theme-color-border);
 }
 
 .content {
   flex: 1;
   padding: 30px;
   overflow-y: auto;
-  background: #f5f5f5;
+  background: var(--app-bg);
 }
 </style>

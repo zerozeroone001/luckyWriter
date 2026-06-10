@@ -19,7 +19,10 @@ import type {
   AIModelCreate,
   AIModelUpdate,
   AvailableModel,
+  GenerationLogsQuery,
+  AIGenerationLog,
   PlanNovelRequest,
+  GenerateVolumeChaptersRequest,
   GenerateCharactersRequest,
   ExpandCharacterRequest,
   PolishCharacterRequest,
@@ -69,6 +72,10 @@ export const outlineApi = {
 
   // 删除大纲项
   delete: (id: number) => api.delete(`/outlines/${id}`),
+
+  // 批量删除大纲项
+  batchDelete: (outlineIds: number[]) =>
+    api.post('/outlines/batch-delete', { outline_ids: outlineIds }),
 }
 
 // 章节API
@@ -156,6 +163,12 @@ export const modelApi = {
     ),
 }
 
+export const logsApi = {
+  // 查询 AI 生成调用日志
+  list: (params?: GenerationLogsQuery) =>
+    api.get<AIGenerationLog[]>('/logs/generation-logs', { params }),
+}
+
 const streamPost = async <TData>(
   path: string,
   data: TData,
@@ -240,63 +253,20 @@ const streamPost = async <TData>(
 // AI生成API（流式）
 export const aiApi = {
   // 一键规划小说大纲（流式）
-  planNovelStream: async (
+  planNovelStream: (
     data: PlanNovelRequest,
     onChunk: (content: string) => void,
     onDone: (result: any) => void,
     onError: (error: string) => void
-  ) => {
-    try {
-      const response = await fetch('http://127.0.0.1:8000/api/ai/plan-novel/stream', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      })
+  ) => streamPost('/ai/plan-novel/stream', data, onChunk, onDone, onError),
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-
-      if (!reader) {
-        throw new Error('无法读取响应流')
-      }
-
-      while (true) {
-        const { done, value } = await reader.read()
-
-        if (done) break
-
-        const text = decoder.decode(value, { stream: true })
-        const lines = text.split('\n')
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(6)
-            try {
-              const event: SSEEvent = JSON.parse(jsonStr)
-
-              if (event.type === 'chunk') {
-                onChunk(event.content)
-              } else if (event.type === 'done') {
-                onDone(event.result)
-              } else if (event.type === 'error') {
-                onError(event.message)
-              }
-            } catch (e) {
-              console.error('解析SSE事件失败:', e)
-            }
-          }
-        }
-      }
-    } catch (error: any) {
-      onError(error.message || '请求失败')
-    }
-  },
+  // 根据卷级大纲生成节章大纲（流式）
+  generateVolumeChaptersStream: (
+    data: GenerateVolumeChaptersRequest,
+    onChunk: (content: string) => void,
+    onDone: (result: any) => void,
+    onError: (error: string) => void
+  ) => streamPost('/ai/generate-volume-chapters/stream', data, onChunk, onDone, onError),
 
   // 批量生成角色卡（流式）
   generateCharactersStream: async (

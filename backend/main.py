@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from database import init_database
 from config import settings
-from routers import novels, characters, chapters, channels, ai, outlines
+from routers import novels, characters, chapters, channels, ai, outlines, logs
 
 
 @asynccontextmanager
@@ -42,6 +42,7 @@ app.include_router(chapters.router)
 app.include_router(channels.router)
 app.include_router(ai.router)
 app.include_router(outlines.router)
+app.include_router(logs.router)
 
 
 @app.get("/")

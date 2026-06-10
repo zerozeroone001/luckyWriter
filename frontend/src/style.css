@@ -1,3 +1,37 @@
+:root {
+  --theme-color: #5576d9;
+  --theme-color-hover: #4764bd;
+  --theme-color-soft: #f0f4ff;
+  --theme-color-border: #d8e2ff;
+  --app-bg: #f7f8fb;
+  --panel-bg: #ffffff;
+  --panel-bg-soft: #f9fafc;
+  --card-bg: #ffffff;
+  --dialog-bg: #ffffff;
+  --reading-bg: #fffdf6;
+  --text-primary: #202735;
+  --text-secondary: #606b7b;
+  --text-muted: #8d96a6;
+  --border-color: #e7eaf1;
+  --dialog-overlay: rgba(32, 39, 53, 0.34);
+  --success-color: #438b59;
+  --success-bg: #eef8f0;
+  --success-border: #cfe7d4;
+  --info-color: #3d72c4;
+  --info-bg: #eef5ff;
+  --info-border: #d4e2fb;
+  --danger-color: #b34d43;
+  --danger-bg: #fff5f3;
+  --danger-border: #efd1cc;
+  --warning-color: #95672b;
+  --warning-bg: #fff8ec;
+  --warning-border: #ead9bd;
+  --disabled-bg: #f1f3f6;
+  --disabled-text: #a4acba;
+  --hover-bg: #f4f7fb;
+  --shadow-soft: 0 12px 30px rgba(32, 39, 53, 0.07);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -9,8 +43,8 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: #333;
-  background: #f5f5f5;
+  color: var(--text-primary);
+  background: var(--app-bg);
 }
 
 #app {
@@ -25,6 +59,16 @@ input,
 textarea,
 select {
   font-family: inherit;
+  color: var(--text-primary);
+  background: var(--panel-bg);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--theme-color-border);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--theme-color-soft);
 }
 
 ::-webkit-scrollbar {
@@ -33,14 +77,19 @@ select {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--panel-bg-soft);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888;
+  background: var(--theme-color-border);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: color-mix(in srgb, var(--theme-color) 34%, var(--theme-color-border));
+}
+
+::selection {
+  color: var(--text-primary);
+  background: var(--theme-color-soft);
 }

@@ -151,18 +151,19 @@ const selectModel = (model: ModelWithProvider) => {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  background: white;
-  border: 1px solid #e0e0e0;
+  color: var(--text-primary);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-soft);
   transition: all 0.2s;
   min-width: 220px;
 }
 
 .switcher-button:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
-  border-color: #4CAF50;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--theme-color) 12%, transparent);
+  border-color: var(--theme-color);
 }
 
 .current-model {
@@ -183,7 +184,7 @@ const selectModel = (model: ModelWithProvider) => {
 .model-name {
   font-weight: 600;
   font-size: 14px;
-  color: #333;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -192,13 +193,13 @@ const selectModel = (model: ModelWithProvider) => {
 
 .model-provider {
   font-size: 11px;
-  color: #999;
+  color: var(--text-muted);
   text-transform: uppercase;
 }
 
 .arrow {
   font-size: 10px;
-  color: #999;
+  color: var(--text-muted);
   transition: transform 0.2s;
 }
 
@@ -222,10 +223,11 @@ const selectModel = (model: ModelWithProvider) => {
   margin-bottom: 10px;
   width: 320px;
   max-height: 400px;
-  background: white;
-  border: 1px solid #e0e0e0;
+  color: var(--text-primary);
+  background: var(--dialog-bg);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--text-primary) 14%, transparent);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -236,22 +238,22 @@ const selectModel = (model: ModelWithProvider) => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid #e0e0e0;
-  background: #fafafa;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--panel-bg-soft);
 }
 
 .dropdown-header h4 {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .close-btn {
   background: none;
   border: none;
   font-size: 18px;
-  color: #999;
+  color: var(--text-muted);
   cursor: pointer;
   padding: 0;
   width: 24px;
@@ -263,8 +265,8 @@ const selectModel = (model: ModelWithProvider) => {
 }
 
 .close-btn:hover {
-  background: #f0f0f0;
-  color: #333;
+  background: var(--hover-bg);
+  color: var(--text-primary);
 }
 
 .loading-state {
@@ -273,14 +275,14 @@ const selectModel = (model: ModelWithProvider) => {
   justify-content: center;
   gap: 10px;
   padding: 40px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .spinner {
   width: 20px;
   height: 20px;
-  border: 3px solid #f0f0f0;
-  border-top: 3px solid #4CAF50;
+  border: 3px solid var(--disabled-bg);
+  border-top: 3px solid var(--success-color);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -302,7 +304,7 @@ const selectModel = (model: ModelWithProvider) => {
   padding: 12px 16px;
   cursor: pointer;
   transition: background 0.2s;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .model-option:last-child {
@@ -310,11 +312,11 @@ const selectModel = (model: ModelWithProvider) => {
 }
 
 .model-option:hover {
-  background: #f9f9f9;
+  background: var(--hover-bg);
 }
 
 .model-option.active {
-  background: #e8f5e9;
+  background: var(--success-bg);
 }
 
 .model-option.disabled {
@@ -323,7 +325,7 @@ const selectModel = (model: ModelWithProvider) => {
 }
 
 .model-option.disabled:hover {
-  background: white;
+  background: var(--dialog-bg);
 }
 
 .option-content {
@@ -340,14 +342,14 @@ const selectModel = (model: ModelWithProvider) => {
 .option-name {
   font-weight: 500;
   font-size: 14px;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .disabled-badge {
   font-size: 10px;
   padding: 2px 6px;
-  background: #ffebee;
-  color: #c62828;
+  background: var(--danger-bg);
+  color: var(--danger-color);
   border-radius: 3px;
 }
 
@@ -359,8 +361,8 @@ const selectModel = (model: ModelWithProvider) => {
 
 .provider-tag {
   padding: 2px 6px;
-  background: #e3f2fd;
-  color: #1976d2;
+  background: var(--info-bg);
+  color: var(--info-color);
   border-radius: 3px;
   text-transform: uppercase;
   font-weight: 500;
@@ -368,13 +370,13 @@ const selectModel = (model: ModelWithProvider) => {
 
 .speed-tag {
   padding: 2px 6px;
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--success-bg);
+  color: var(--success-color);
   border-radius: 3px;
 }
 
 .check-icon {
-  color: #4CAF50;
+  color: var(--success-color);
   font-size: 18px;
   font-weight: bold;
 }
@@ -386,21 +388,21 @@ const selectModel = (model: ModelWithProvider) => {
 
 .empty-state p {
   margin: 0 0 15px 0;
-  color: #999;
+  color: var(--text-muted);
 }
 
 .link-button {
   display: inline-block;
   padding: 8px 16px;
-  background: #4CAF50;
-  color: white;
+  background: var(--success-color);
+  color: var(--panel-bg);
   text-decoration: none;
   border-radius: 4px;
   font-size: 14px;
 }
 
 .link-button:hover {
-  background: #45a049;
+  background: color-mix(in srgb, var(--success-color) 84%, var(--text-primary));
 }
 
 .dropdown-enter-active,

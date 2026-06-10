@@ -507,11 +507,11 @@ const formatDate = (date: string) => {
 
 .header h1 {
   font-size: 28px;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .btn-primary {
-  background: #4CAF50;
+  background: var(--success-color);
   color: white;
   padding: 10px 20px;
   border: none;
@@ -521,17 +521,17 @@ const formatDate = (date: string) => {
 }
 
 .btn-primary:hover {
-  background: #45a049;
+  background: color-mix(in srgb, var(--success-color) 84%, var(--text-primary));
 }
 
 .btn-primary:disabled {
-  background: #ccc;
+  background: var(--disabled-bg);
   cursor: not-allowed;
 }
 
 .btn-secondary {
-  background: #ccc;
-  color: #333;
+  background: var(--disabled-bg);
+  color: var(--text-primary);
   padding: 10px 20px;
   border: none;
   border-radius: 5px;
@@ -540,7 +540,7 @@ const formatDate = (date: string) => {
 }
 
 .btn-secondary:hover {
-  background: #bbb;
+  background: var(--hover-bg);
 }
 
 .dialog-wide {
@@ -551,15 +551,15 @@ const formatDate = (date: string) => {
 .loading {
   text-align: center;
   padding: 50px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .loading-spinner {
   width: 40px;
   height: 40px;
   margin: 0 auto 15px;
-  border: 4px solid #f0f0f0;
-  border-top: 4px solid #4CAF50;
+  border: 4px solid var(--disabled-bg);
+  border-top: 4px solid var(--success-color);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -581,8 +581,8 @@ const formatDate = (date: string) => {
 }
 
 .channel-card {
-  background: white;
-  border: 1px solid #e0e0e0;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 20px;
   position: relative;
@@ -612,7 +612,7 @@ const formatDate = (date: string) => {
 
 .provider-badge {
   padding: 4px 10px;
-  background: #2196F3;
+  background: var(--info-color);
   color: white;
   border-radius: 4px;
   font-size: 12px;
@@ -620,7 +620,7 @@ const formatDate = (date: string) => {
 }
 
 .model-count {
-  color: #666;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
@@ -631,24 +631,24 @@ const formatDate = (date: string) => {
 
 .btn-icon {
   padding: 6px 14px;
-  border: 1px solid #ddd;
-  background: white;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
 }
 
 .btn-icon:hover {
-  background: #f5f5f5;
+  background: var(--hover-bg);
 }
 
 .btn-danger {
-  color: #e74c3c;
-  border-color: #e74c3c;
+  color: var(--danger-color);
+  border-color: var(--danger-color);
 }
 
 .btn-danger:hover {
-  background: #fef5f5;
+  background: var(--danger-bg);
 }
 
 .channel-info {
@@ -664,14 +664,14 @@ const formatDate = (date: string) => {
 
 .info-item .label {
   font-weight: 500;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .disabled-badge {
   position: absolute;
   top: 20px;
   right: 20px;
-  background: #e74c3c;
+  background: var(--danger-color);
   color: white;
   padding: 5px 10px;
   border-radius: 4px;
@@ -684,7 +684,7 @@ const formatDate = (date: string) => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--dialog-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -692,7 +692,7 @@ const formatDate = (date: string) => {
 }
 
 .dialog {
-  background: white;
+  background: var(--card-bg);
   border-radius: 8px;
   padding: 30px;
   width: 600px;
@@ -723,7 +723,7 @@ const formatDate = (date: string) => {
 .form-group select {
   width: 100%;
   padding: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-color);
   border-radius: 5px;
   box-sizing: border-box;
 }
@@ -731,20 +731,20 @@ const formatDate = (date: string) => {
 .form-group small {
   display: block;
   margin-top: 5px;
-  color: #999;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
 .config-section {
   margin-top: 25px;
   padding-top: 25px;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--border-color);
 }
 
 .config-section h3 {
   margin: 0 0 15px 0;
   font-size: 16px;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .form-row {
@@ -774,7 +774,7 @@ const formatDate = (date: string) => {
 .empty-state {
   text-align: center;
   padding: 40px;
-  color: #999;
+  color: var(--text-muted);
 }
 
 .model-item {
@@ -782,7 +782,7 @@ const formatDate = (date: string) => {
   justify-content: space-between;
   align-items: center;
   padding: 15px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
 }
 
@@ -795,7 +795,7 @@ const formatDate = (date: string) => {
 }
 
 .model-id {
-  color: #666;
+  color: var(--text-secondary);
   font-size: 13px;
   margin: 5px 0;
 }
@@ -804,12 +804,12 @@ const formatDate = (date: string) => {
   display: flex;
   gap: 15px;
   font-size: 13px;
-  color: #666;
+  color: var(--text-secondary);
   margin-top: 8px;
 }
 
 .speed-badge {
-  background: #4CAF50;
+  background: var(--success-color);
   color: white;
   padding: 2px 8px;
   border-radius: 3px;
@@ -822,9 +822,9 @@ const formatDate = (date: string) => {
 
 /* 模型选择样式优化 */
 .model-select-container {
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-color);
   border-radius: 5px;
-  background: #fafafa;
+  background: var(--panel-bg-soft);
   padding: 10px;
 }
 
@@ -841,22 +841,22 @@ const formatDate = (date: string) => {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 15px;
-  background: white;
-  border: 2px solid #e0e0e0;
+  background: var(--card-bg);
+  border: 2px solid var(--border-color);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .model-select-item:hover {
-  border-color: #4CAF50;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-color: var(--success-color);
+  box-shadow: var(--shadow-soft);
 }
 
 .model-select-item.selected {
-  background: #e8f5e9;
-  border-color: #4CAF50;
-  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.2);
+  background: var(--success-bg);
+  border-color: var(--success-color);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--success-color) 20%, transparent);
 }
 
 .model-select-checkbox {
@@ -874,16 +874,16 @@ const formatDate = (date: string) => {
 .hint {
   margin-left: 10px;
   font-size: 12px;
-  color: #999;
+  color: var(--text-muted);
   font-weight: normal;
 }
 
 .selected-count {
   margin-top: 10px;
   padding: 8px 12px;
-  background: #e8f5e9;
+  background: var(--success-bg);
   border-radius: 4px;
-  color: #2e7d32;
+  color: var(--success-color);
   font-size: 14px;
   font-weight: 500;
 }
@@ -897,21 +897,21 @@ const formatDate = (date: string) => {
 .model-name {
   font-weight: 600;
   font-size: 14px;
-  color: #333;
+  color: var(--text-primary);
   margin-bottom: 4px;
 }
 
 .model-description {
   font-size: 13px;
-  color: #666;
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 
 .model-select-item.selected .model-name {
-  color: #2e7d32;
+  color: var(--success-color);
 }
 
 .model-select-item.selected .model-description {
-  color: #4CAF50;
+  color: var(--success-color);
 }
 </style>

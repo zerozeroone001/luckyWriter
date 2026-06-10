@@ -14,6 +14,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 import hashlib
 import json
+import time
 
 import httpx
 
@@ -41,6 +42,18 @@ MODEL_EXCLUDE_KEYWORDS = (
 
 class AIService:
     """统一封装 NewAPI/OpenAI 兼容接口的 AI 调用能力。"""
+
+    def __init__(self):
+        self._log_callback = None
+
+    def set_log_callback(self, callback):
+        """设置日志回调函数，用于记录模型调用日志。"""
+        self._log_callback = callback
+
+    async def _log_api_call(self, log_data: dict):
+        """记录API调用日志。"""
+        if self._log_callback:
+            await self._log_callback(log_data)
 
     async def get_available_models(
         self,
@@ -91,6 +104,7 @@ class AIService:
         max_tokens: int = 4000,
         api_key: str | None = None,
         base_url: str | None = None,
+        log_context: dict | None = None,
     ) -> AsyncGenerator[str, None]:
         """根据 provider 选择 NewAPI/OpenAI 兼容渠道并流式生成文本内容。"""
         provider_name = provider.lower()
@@ -104,6 +118,7 @@ class AIService:
                 max_tokens=max_tokens,
                 api_key=api_key,
                 base_url=base_url,
+                log_context=log_context,
             ):
                 yield chunk
             return
@@ -199,6 +214,7 @@ class AIService:
         max_tokens: int,
         api_key: str | None = None,
         base_url: str | None = None,
+        log_context: dict | None = None,
     ) -> AsyncGenerator[str, None]:
         """调用 NewAPI/OpenAI 兼容的 POST /v1/chat/completions 流式生成。"""
         messages = self._build_chat_messages(prompt, system_prompt)
@@ -210,6 +226,7 @@ class AIService:
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True,
+            log_context=log_context,
         )
 
         async for chunk in stream:
@@ -225,6 +242,7 @@ class AIService:
         max_tokens: int = 4000,
         stream: bool = True,
         debug_label: str | None = None,
+        log_context: dict | None = None,
     ) -> Any:
         """发送 Chat Completions 请求，按 stream 参数返回普通响应或异步文本流。"""
         resolved_api_key = self._resolve_api_key(api_key or settings.OPENAI_API_KEY)
@@ -242,7 +260,7 @@ class AIService:
             print(f"[{debug_label}] 请求内容: {self._safe_json_dumps(payload)}")
 
         if stream:
-            return self._stream_openai_compatible_response(url, resolved_api_key, payload)
+            return self._stream_openai_compatible_response(url, resolved_api_key, payload, log_context)
 
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
             response = await client.post(url, headers=self._openai_headers(resolved_api_key), json=payload)
@@ -259,21 +277,57 @@ class AIService:
         url: str,
         api_key: str,
         payload: dict[str, Any],
+        log_context: dict | None = None,
     ) -> AsyncGenerator[str, None]:
         """解析 NewAPI/OpenAI 兼容的 SSE 流式响应。"""
-        async with httpx.AsyncClient(timeout=STREAM_TIMEOUT_SECONDS) as client:
-            async with client.stream(
-                "POST",
-                url,
-                headers=self._openai_headers(api_key),
-                json=payload,
-            ) as response:
-                self._raise_for_api_error(response, "流式聊天补全失败")
+        start_time = time.time()
+        status = "success"
+        error_message = None
+        input_tokens = 0
+        output_tokens = 0
 
-                async for line in response.aiter_lines():
-                    content = self._parse_openai_stream_line(line)
-                    if content:
-                        yield content
+        # 提取 prompt（messages 中的内容）
+        messages = payload.get("messages", [])
+        prompt_parts = [msg.get("content", "") for msg in messages if msg.get("content")]
+        full_prompt = "\n".join(prompt_parts)
+
+        try:
+            async with httpx.AsyncClient(timeout=STREAM_TIMEOUT_SECONDS) as client:
+                async with client.stream(
+                    "POST",
+                    url,
+                    headers=self._openai_headers(api_key),
+                    json=payload,
+                ) as response:
+                    self._raise_for_api_error(response, "流式聊天补全失败")
+
+                    async for line in response.aiter_lines():
+                        content = self._parse_openai_stream_line(line)
+                        if content:
+                            output_tokens += len(content) // 4
+                            yield content
+
+            input_tokens = len(full_prompt) // 4
+
+        except Exception as e:
+            status = "failed"
+            error_message = str(e)
+            raise
+        finally:
+            duration = time.time() - start_time
+            log_data = {
+                "url": url,
+                "model": payload.get("model"),
+                "prompt": full_prompt[:2000] if full_prompt else None,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "duration_seconds": duration,
+                "status": status,
+                "error_message": error_message,
+            }
+            if log_context:
+                log_data.update(log_context)
+            await self._log_api_call(log_data)
 
     def _normalize_openai_base_url(self, base_url: str | None) -> str:
         """标准化 OpenAI 兼容接口 Base URL，确保最终以 /v1 结尾。"""

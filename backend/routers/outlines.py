@@ -151,6 +151,65 @@ async def delete_outline(
     if not outline:
         raise HTTPException(status_code=404, detail="大纲不存在")
 
+    if outline.outline_type == "volume" and outline.volume_number:
+        child_result = await db.execute(
+            select(Outline).where(
+                Outline.novel_id == outline.novel_id,
+                Outline.outline_type == "chapter",
+                Outline.volume_number == outline.volume_number,
+            )
+        )
+        for child_outline in child_result.scalars().all():
+            await db.delete(child_outline)
+
     await db.delete(outline)
     await db.commit()
     return {"message": "删除成功"}
+
+
+class BatchDeleteRequest(BaseModel):
+    outline_ids: List[int]
+
+
+@router.post("/batch-delete")
+async def batch_delete_outlines(
+    request: BatchDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """批量删除大纲项。"""
+    if not request.outline_ids:
+        raise HTTPException(status_code=422, detail="未选择任何大纲项")
+
+    result = await db.execute(
+        select(Outline).where(Outline.id.in_(request.outline_ids))
+    )
+    outlines_to_delete = result.scalars().all()
+
+    if not outlines_to_delete:
+        raise HTTPException(status_code=404, detail="未找到指定的大纲项")
+
+    # 收集所有要删除的大纲ID（包括子章节）
+    all_ids_to_delete = set(request.outline_ids)
+    for outline in outlines_to_delete:
+        if outline.outline_type == "volume" and outline.volume_number:
+            child_result = await db.execute(
+                select(Outline.id).where(
+                    Outline.novel_id == outline.novel_id,
+                    Outline.outline_type == "chapter",
+                    Outline.volume_number == outline.volume_number,
+                )
+            )
+            all_ids_to_delete.update(child_result.scalars().all())
+
+    # 执行批量删除
+    await db.execute(
+        select(Outline).where(Outline.id.in_(all_ids_to_delete))
+    )
+    for outline_id in all_ids_to_delete:
+        result = await db.execute(select(Outline).where(Outline.id == outline_id))
+        outline = result.scalar_one_or_none()
+        if outline:
+            await db.delete(outline)
+
+    await db.commit()
+    return {"message": f"成功删除 {len(all_ids_to_delete)} 个大纲项"}

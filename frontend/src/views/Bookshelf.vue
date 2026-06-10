@@ -376,12 +376,12 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .header h1 {
   margin: 0;
   font-size: 28px;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .subtitle {
   margin: 8px 0 0;
-  color: #777;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
@@ -397,15 +397,15 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .toolbar-select {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   box-sizing: border-box;
   font-size: 14px;
-  background: white;
+  background: var(--card-bg);
 }
 
 .btn-primary {
-  background: #4CAF50;
+  background: var(--success-color);
   color: white;
   padding: 10px 20px;
   border: none;
@@ -415,21 +415,21 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #45a049;
+  background: color-mix(in srgb, var(--success-color) 84%, var(--text-primary));
 }
 
 .btn-secondary {
-  background: #f0f0f0;
-  color: #333;
+  background: var(--disabled-bg);
+  color: var(--text-primary);
   padding: 10px 20px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-color);
   border-radius: 5px;
   cursor: pointer;
   font-size: 16px;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #e6e6e6;
+  background: var(--hover-bg);
 }
 
 .btn-primary:disabled,
@@ -445,14 +445,14 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   gap: 12px;
   margin-bottom: 18px;
   padding: 12px 16px;
-  color: #b42318;
-  background: #fff1f0;
-  border: 1px solid #ffccc7;
+  color: var(--danger-color);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
   border-radius: 6px;
 }
 
 .error-message button {
-  color: #b42318;
+  color: var(--danger-color);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -462,15 +462,15 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .empty-state {
   text-align: center;
   padding: 70px 20px;
-  color: #666;
-  background: white;
-  border: 1px solid #eee;
+  color: var(--text-secondary);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
   border-radius: 10px;
 }
 
 .empty-state h2 {
   margin: 0 0 10px;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .empty-state p {
@@ -484,8 +484,8 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 }
 
 .novel-card {
-  background: white;
-  border: 1px solid #e0e0e0;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   overflow: hidden;
   cursor: pointer;
@@ -494,14 +494,14 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 .novel-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-soft);
 }
 
 .cover {
   position: relative;
   width: 100%;
   height: 180px;
-  background: linear-gradient(135deg, #f5f5f5, #e9f5ec);
+  background: linear-gradient(135deg, var(--panel-bg-soft), var(--success-bg));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -515,7 +515,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 .cover-placeholder {
   font-size: 48px;
-  color: #999;
+  color: var(--text-muted);
   font-weight: bold;
 }
 
@@ -525,7 +525,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   right: 12px;
   padding: 4px 10px;
   color: white;
-  background: rgba(52, 152, 219, 0.9);
+  background: color-mix(in srgb, var(--info-color) 90%, transparent);
   border-radius: 999px;
   font-size: 12px;
 }
@@ -544,28 +544,28 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .info h3 {
   margin: 0 0 8px;
   font-size: 18px;
-  color: #333;
+  color: var(--text-primary);
   line-height: 1.4;
 }
 
 .btn-delete {
   flex-shrink: 0;
   padding: 4px 8px;
-  color: #d93026;
-  background: #fff;
-  border: 1px solid #ffd6d3;
+  color: var(--danger-color);
+  background: var(--card-bg);
+  border: 1px solid var(--danger-border);
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
 }
 
 .btn-delete:hover {
-  background: #fff1f0;
+  background: var(--danger-bg);
 }
 
 .author {
   margin: 5px 0;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
@@ -573,8 +573,8 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   display: inline-block;
   margin: 6px 0;
   padding: 3px 8px;
-  color: #4CAF50;
-  background: #eef8ef;
+  color: var(--success-color);
+  background: var(--success-bg);
   border-radius: 999px;
   font-size: 13px;
 }
@@ -582,7 +582,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .synopsis {
   min-height: 40px;
   margin: 8px 0 12px;
-  color: #777;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.5;
   display: -webkit-box;
@@ -599,21 +599,21 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   display: flex;
   justify-content: space-between;
   margin-bottom: 6px;
-  color: #555;
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
 .progress-bar {
   width: 100%;
   height: 8px;
-  background: #f0f0f0;
+  background: var(--disabled-bg);
   border-radius: 4px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: #4CAF50;
+  background: var(--success-color);
   transition: width 0.3s;
 }
 
@@ -621,12 +621,12 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   display: block;
   margin-top: 5px;
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .updated-at {
   margin: 12px 0 0;
-  color: #999;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -636,7 +636,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--dialog-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -644,7 +644,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 }
 
 .dialog {
-  background: white;
+  background: var(--card-bg);
   border-radius: 8px;
   padding: 30px;
   width: 500px;
@@ -665,9 +665,9 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .form-error {
   margin-bottom: 16px;
   padding: 10px 12px;
-  color: #b42318;
-  background: #fff1f0;
-  border: 1px solid #ffccc7;
+  color: var(--danger-color);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
   border-radius: 5px;
   font-size: 14px;
 }
@@ -676,7 +676,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   display: block;
   margin-bottom: 8px;
   font-weight: 500;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .form-group input,
@@ -684,7 +684,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .form-group textarea {
   width: 100%;
   padding: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-color);
   border-radius: 5px;
   font-size: 14px;
   box-sizing: border-box;

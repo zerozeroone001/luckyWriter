@@ -45,3 +45,5 @@ Thumbs.db
 
 # 文档
 *.md
+*.sh
+*.bat

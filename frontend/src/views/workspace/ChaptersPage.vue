@@ -1034,8 +1034,9 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .tab-content {
   min-height: 500px;
   padding: 30px;
-  background: linear-gradient(180deg, #f8fbff 0%, #fff 220px);
-  border-radius: 8px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--theme-color-soft) 68%, var(--panel-bg)) 0%, var(--panel-bg) 220px);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
 }
 
 .tab-header,
@@ -1068,12 +1069,12 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .tab-header h2,
 .dialog h2 {
   margin: 0;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .page-eyebrow {
   margin: 0 0 6px;
-  color: #2563eb;
+  color: var(--theme-color);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1093,17 +1094,17 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   grid-template-columns: 72px minmax(0, 1fr) 310px;
   gap: 18px;
   padding: 20px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid #dbeafe;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
   border-radius: 16px;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--shadow-soft);
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
 
 .chapter-outline-card:hover {
-  border-color: #93c5fd;
-  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.12);
-  transform: translateY(-2px);
+  border-color: var(--theme-color-border);
+  box-shadow: 0 14px 30px color-mix(in srgb, var(--theme-color) 10%, transparent);
+  transform: translateY(-1px);
 }
 
 .chapter-outline-index {
@@ -1112,8 +1113,9 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   align-items: center;
   justify-content: center;
   min-height: 72px;
-  color: #1d4ed8;
-  background: linear-gradient(180deg, #eff6ff, #dbeafe);
+  color: var(--theme-color);
+  background: color-mix(in srgb, var(--theme-color-soft) 70%, var(--panel-bg));
+  border: 1px solid var(--theme-color-border);
   border-radius: 14px;
 }
 
@@ -1137,7 +1139,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .chapter-item h3,
 .chapter-volume-header h3 {
   margin: 0 0 12px;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .outline-detail-grid {
@@ -1156,14 +1158,14 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .chapter-outline-summary,
 .ai-context-card {
   padding: 12px;
-  background: #f8fafc;
-  border: 1px solid #edf2f7;
+  background: var(--panel-bg-soft);
+  border: 1px solid var(--border-color);
   border-radius: 10px;
 }
 
 .outline-detail.primary-detail {
-  background: #f0f9ff;
-  border-color: #bae6fd;
+  background: color-mix(in srgb, var(--theme-color-soft) 72%, var(--panel-bg));
+  border-color: var(--theme-color-border);
 }
 
 .outline-detail label,
@@ -1171,7 +1173,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .form-group label {
   display: block;
   margin-bottom: 6px;
-  color: #64748b;
+  color: var(--text-secondary);
   font-weight: 700;
   font-size: 13px;
 }
@@ -1180,7 +1182,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .chapter-outline-summary p,
 .ai-context-card p {
   margin: 0;
-  color: #475569;
+  color: var(--text-secondary);
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -1191,7 +1193,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 .ai-context-card h3 {
   margin: 0 0 8px;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .chapter-ai-actions {
@@ -1208,56 +1210,60 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   justify-content: flex-end;
   width: 100%;
   padding-top: 8px;
-  border-top: 1px dashed #e5e7eb;
+  border-top: 1px dashed var(--border-color);
 }
 
 .ai-action-btn {
   min-width: 132px;
   padding: 9px 12px;
-  color: #1f2937;
+  color: var(--text-primary);
   font-weight: 700;
-  background: #f8fafc;
-  border: 1px solid #d1d5db;
+  background: var(--panel-bg-soft);
+  border: 1px solid var(--border-color);
   border-radius: 999px;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s, background 0.2s;
 }
 
 .ai-action-btn:hover:not(:disabled) {
-  border-color: #60a5fa;
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.16);
+  border-color: var(--theme-color-border);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--theme-color) 10%, transparent);
   transform: translateY(-1px);
 }
 
 .ai-action-btn.primary {
   color: white;
-  background: linear-gradient(135deg, #16a34a, #22c55e);
+  background: var(--theme-color);
   border-color: transparent;
 }
 
+.ai-action-btn.primary:hover:not(:disabled) {
+  background: var(--theme-color-hover);
+}
+
 .ai-action-btn.secondary {
-  color: #1d4ed8;
-  background: #eff6ff;
-  border-color: #bfdbfe;
+  color: var(--theme-color);
+  background: color-mix(in srgb, var(--theme-color-soft) 76%, var(--panel-bg));
+  border-color: var(--theme-color-border);
 }
 
 .ai-action-btn.overwrite {
-  color: #b45309;
-  background: #fffbeb;
-  border-color: #fde68a;
+  color: var(--warning-color);
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
 }
 
 .ai-action-btn:disabled {
-  color: #9ca3af;
-  background: #f3f4f6;
-  border-color: #e5e7eb;
+  color: var(--text-muted);
+  background: var(--panel-bg-soft);
+  border-color: var(--border-color);
   box-shadow: none;
   cursor: not-allowed;
   transform: none;
 }
 
 .chapter-number {
-  color: #1f6fb2;
+  color: var(--theme-color);
   font-size: 13px;
   font-weight: 600;
 }
@@ -1265,21 +1271,23 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .chapter-status {
   display: inline-block;
   padding: 3px 8px;
-  color: #2f7d32;
-  background: #eef8ef;
+  color: var(--theme-color);
+  background: var(--theme-color-soft);
+  border: 1px solid var(--theme-color-border);
   border-radius: 999px;
   font-size: 12px;
   white-space: nowrap;
 }
 
 .chapter-status.empty {
-  color: #8a5a00;
-  background: #fff8e6;
+  color: var(--warning-color);
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
 }
 
 .chapter-meta,
 .chapter-detail-meta {
-  color: #777;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -1288,38 +1296,38 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   justify-content: space-between;
   gap: 16px;
   padding: 16px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
   cursor: pointer;
   transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 
 .chapter-item:hover {
-  border-color: #9ac7ed;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+  border-color: var(--theme-color-border);
+  box-shadow: var(--shadow-soft);
   transform: translateY(-2px);
 }
 
 .chapter-preview {
   margin: 0 0 10px;
-  color: #666;
+  color: var(--text-secondary);
   line-height: 1.6;
   white-space: pre-wrap;
 }
 
 .empty-state {
   padding: 60px 20px;
-  color: #666;
+  color: var(--text-secondary);
   text-align: center;
-  background: #f8fafc;
-  border: 1px solid #eee;
-  border-radius: 8px;
+  background: var(--panel-bg-soft);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
 }
 
 .empty-state h3 {
   margin: 0 0 10px;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .compact-empty {
@@ -1355,16 +1363,18 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(15, 23, 42, 0.58);
+  background: var(--dialog-overlay);
+  backdrop-filter: blur(2px);
 }
 
 .dialog {
   width: 500px;
   max-width: 90%;
   padding: 30px;
-  background: white;
-  border-radius: 14px;
-  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.25);
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: 0 22px 58px color-mix(in srgb, var(--text-primary) 14%, transparent);
 }
 
 .chapter-form-dialog,
@@ -1400,8 +1410,10 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .form-group textarea {
   width: 100%;
   padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
+  color: var(--text-primary);
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
   box-sizing: border-box;
 }
 
@@ -1412,19 +1424,19 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 .form-hint {
   margin: -8px 0 16px;
-  color: #777;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
 .ai-preview-panel {
   overflow: hidden;
-  border: 1px solid #bfdbfe;
+  background: var(--reading-bg);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
-  background: #fff;
 }
 
-.ai-preview-panel.empty {
-  border-color: #e5e7eb;
+.ai-preview-panel:not(.empty) {
+  border-color: var(--theme-color-border);
 }
 
 .ai-preview-header {
@@ -1432,41 +1444,42 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  color: #1e3a8a;
-  background: #eff6ff;
-  border-bottom: 1px solid #bfdbfe;
+  color: var(--theme-color);
+  background: color-mix(in srgb, var(--theme-color-soft) 70%, var(--panel-bg));
+  border-bottom: 1px solid var(--border-color);
 }
 
 .ai-preview-header span {
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
 .preview-text {
   max-height: 44vh;
   min-height: 220px;
-  padding: 16px;
+  padding: 18px;
   overflow-y: auto;
-  color: #1f2937;
+  color: var(--text-primary);
+  background: var(--reading-bg);
   font-family: ui-serif, Georgia, 'Times New Roman', serif;
   line-height: 1.9;
 }
 
 .chapter-content-full {
   min-height: 180px;
-  padding: 16px;
-  color: #333;
-  line-height: 1.8;
+  padding: 22px;
+  color: var(--text-primary);
+  line-height: 1.9;
   white-space: pre-wrap;
-  background: #f8fafc;
-  border: 1px solid #eee;
-  border-radius: 8px;
+  background: var(--reading-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
   outline: none;
 }
 
 .chapter-content-full::selection {
-  color: #0f172a;
-  background: #bfdbfe;
+  color: var(--text-primary);
+  background: var(--theme-color-soft);
 }
 
 .selection-edit-button {
@@ -1475,10 +1488,10 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   padding: 8px 14px;
   color: white;
   font-weight: 700;
-  background: linear-gradient(135deg, #2563eb, #60a5fa);
+  background: var(--theme-color);
   border: none;
   border-radius: 999px;
-  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.28);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--theme-color) 28%, transparent);
   cursor: pointer;
 }
 
@@ -1486,11 +1499,11 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   max-height: 180px;
   padding: 14px;
   overflow-y: auto;
-  color: #334155;
+  color: var(--text-secondary);
   line-height: 1.8;
   white-space: pre-wrap;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--panel-bg-soft);
+  border: 1px solid var(--border-color);
   border-radius: 10px;
 }
 
@@ -1502,10 +1515,10 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .form-error {
   margin-bottom: 16px;
   padding: 10px 12px;
-  color: #b42318;
-  background: #fff1f0;
-  border: 1px solid #ffccc7;
-  border-radius: 5px;
+  color: var(--danger-color);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
 }
 
 .error-message {
@@ -1517,24 +1530,24 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 .error-message button,
 .btn-text {
-  color: #3498db;
+  color: var(--theme-color);
   background: transparent;
   border: none;
   cursor: pointer;
 }
 
 .btn-text.danger {
-  color: #d93026;
+  color: var(--danger-color);
 }
 
 .btn-text:disabled {
-  color: #aaa;
+  color: var(--text-muted);
   cursor: not-allowed;
 }
 
 .loading {
   padding: 50px;
-  color: #666;
+  color: var(--text-secondary);
   text-align: center;
 }
 
@@ -1542,23 +1555,36 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 .btn-secondary {
   padding: 10px 20px;
   border: none;
-  border-radius: 5px;
+  border-radius: 8px;
   cursor: pointer;
 }
 
 .btn-primary {
   color: white;
-  background: #4CAF50;
+  background: var(--theme-color);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--theme-color-hover);
 }
 
 .btn-secondary {
-  color: #333;
-  background: #ccc;
+  color: var(--text-secondary);
+  background: var(--panel-bg-soft);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  color: var(--theme-color);
+  background: color-mix(in srgb, var(--theme-color-soft) 62%, var(--panel-bg));
+  border-color: var(--theme-color-border);
 }
 
 .btn-primary:disabled,
 .btn-secondary:disabled {
-  background: #ccc;
+  color: var(--text-muted);
+  background: var(--panel-bg-soft);
+  border-color: var(--border-color);
   cursor: not-allowed;
 }
 

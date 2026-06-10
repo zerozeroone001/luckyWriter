@@ -19,6 +19,7 @@ class NovelCreate(BaseModel):
     genre: Optional[str] = None
     target_words: int = 1000000
     synopsis: Optional[str] = None
+    style_prompt: Optional[str] = None
 
 
 class NovelUpdate(BaseModel):
@@ -27,6 +28,7 @@ class NovelUpdate(BaseModel):
     genre: Optional[str] = None
     target_words: Optional[int] = None
     synopsis: Optional[str] = None
+    style_prompt: Optional[str] = None
     status: Optional[str] = None
     cover_image: Optional[str] = None
 
@@ -40,6 +42,7 @@ class NovelResponse(BaseModel):
     current_words: int
     cover_image: Optional[str]
     synopsis: Optional[str]
+    style_prompt: Optional[str]
     status: str
     created_at: datetime
     updated_at: datetime

@@ -27,6 +27,8 @@ async def init_database():
         await conn.run_sync(Base.metadata.create_all)
         await _allow_nullable_ai_channel_model_name(conn)
         await _ensure_ai_generation_logs_model_id(conn)
+        await _ensure_ai_generation_logs_request_fields(conn)
+        await _ensure_novels_style_prompt(conn)
 
 
 async def _ensure_ai_generation_logs_model_id(conn):
@@ -39,6 +41,35 @@ async def _ensure_ai_generation_logs_model_id(conn):
         return
 
     await conn.execute(text("ALTER TABLE ai_generation_logs ADD COLUMN model_id INTEGER"))
+
+
+async def _ensure_ai_generation_logs_request_fields(conn):
+    """为旧版 AI 生成日志表补齐请求信息字段。"""
+    result = await conn.execute(text("PRAGMA table_info(ai_generation_logs)"))
+    columns = result.fetchall()
+    column_names = {column[1] for column in columns}
+    fields = {
+        "api_endpoint": "VARCHAR(200)",
+        "channel_name": "VARCHAR(100)",
+        "channel_provider": "VARCHAR(50)",
+        "model_name": "VARCHAR(100)",
+        "model_identifier": "VARCHAR(100)",
+        "request_params": "TEXT",
+    }
+
+    for field_name, field_type in fields.items():
+        if field_name not in column_names:
+            await conn.execute(text(f"ALTER TABLE ai_generation_logs ADD COLUMN {field_name} {field_type}"))
+
+
+async def _ensure_novels_style_prompt(conn):
+    """为 novels 表补齐 style_prompt 字段。"""
+    result = await conn.execute(text("PRAGMA table_info(novels)"))
+    columns = result.fetchall()
+    has_style_prompt = any(column[1] == "style_prompt" for column in columns)
+
+    if not has_style_prompt:
+        await conn.execute(text("ALTER TABLE novels ADD COLUMN style_prompt TEXT"))
 
 
 async def _allow_nullable_ai_channel_model_name(conn):

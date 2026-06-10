@@ -20,23 +20,24 @@ import ModelSwitcher from './components/ModelSwitcher.vue'
 <style scoped>
 #app {
   min-height: 100vh;
-  background: #f5f5f5;
+  background: var(--app-bg);
 }
 
 .main-nav {
-  background: white;
-  border-bottom: 1px solid #e0e0e0;
-  padding: 0 30px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   height: 60px;
+  padding: 0 30px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: var(--shadow-soft);
 }
 
 .nav-brand {
+  color: var(--text-primary);
   font-size: 20px;
   font-weight: bold;
-  color: #333;
 }
 
 .nav-links {
@@ -45,20 +46,20 @@ import ModelSwitcher from './components/ModelSwitcher.vue'
 }
 
 .nav-links a {
-  color: #666;
-  text-decoration: none;
   padding: 8px 16px;
-  border-radius: 5px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-radius: 6px;
   transition: all 0.2s;
 }
 
 .nav-links a:hover {
-  background: #f5f5f5;
-  color: #333;
+  color: var(--theme-color);
+  background: var(--theme-color-soft);
 }
 
 .nav-links a.router-link-active {
-  background: #4CAF50;
   color: white;
+  background: var(--theme-color);
 }
 </style>

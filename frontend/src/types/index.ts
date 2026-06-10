@@ -8,6 +8,7 @@ export interface Novel {
   current_words: number
   cover_image?: string
   synopsis?: string
+  style_prompt?: string
   status: string
   created_at: string
   updated_at: string
@@ -212,6 +213,32 @@ export interface AvailableModel {
   description?: string
 }
 
+export interface GenerationLogsQuery {
+  limit?: number
+  offset?: number
+  generation_type?: string
+  status?: string
+}
+
+export interface AIGenerationLog {
+  id: number
+  novel_id?: number
+  generation_type: string
+  api_endpoint?: string
+  channel_name?: string
+  channel_provider?: string
+  model_name?: string
+  model_identifier?: string
+  request_params?: string
+  input_tokens?: number
+  output_tokens?: number
+  cost?: number
+  duration_seconds?: number
+  status?: string
+  error_message?: string
+  created_at: string
+}
+
 // AI生成相关类型
 export interface PlanNovelRequest {
   novel_id: number
@@ -220,6 +247,15 @@ export interface PlanNovelRequest {
   target_volumes?: number
   genre?: string
   style_requirements?: string
+}
+
+export interface GenerateVolumeChaptersRequest {
+  novel_id: number
+  outline_id: number
+  target_chapters?: number
+  start_chapter_number?: number
+  style_requirements?: string
+  replace_existing?: boolean
 }
 
 export interface GenerateCharactersRequest {

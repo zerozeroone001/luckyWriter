@@ -8,9 +8,37 @@ import json
 import re
 import time
 
-from database import get_db
+from database import get_db, AsyncSessionLocal
 from models import Novel, Outline, Chapter, Character, AIGenerationLog, AIChannel, AIModel
 from services import ai_service, context_manager
+
+
+async def _log_model_api_call(log_data: dict):
+    """记录外部模型API调用日志到数据库。"""
+    async with AsyncSessionLocal() as db:
+        log = AIGenerationLog(
+            novel_id=log_data.get("novel_id"),
+            model_id=log_data.get("model_id"),
+            generation_type=log_data.get("generation_type"),
+            prompt_fingerprint=log_data.get("prompt_fingerprint"),
+            api_endpoint=log_data.get("url"),
+            channel_name=log_data.get("channel_name"),
+            channel_provider=log_data.get("channel_provider"),
+            model_name=log_data.get("model_name"),
+            model_identifier=log_data.get("model"),
+            request_params=log_data.get("prompt"),
+            input_tokens=log_data.get("input_tokens"),
+            output_tokens=log_data.get("output_tokens"),
+            duration_seconds=log_data.get("duration_seconds"),
+            status=log_data.get("status"),
+            error_message=log_data.get("error_message"),
+        )
+        db.add(log)
+        await db.commit()
+
+
+# 设置AI服务的日志回调
+ai_service.set_log_callback(_log_model_api_call)
 
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
@@ -41,6 +69,31 @@ class PlanNovelRequest(BaseModel):
         return self
 
 
+class GenerateVolumeChaptersRequest(BaseModel):
+    novel_id: int
+    outline_id: int
+    target_chapters: int = 20
+    start_chapter_number: Optional[int] = None
+    style_requirements: Optional[str] = None
+    replace_existing: bool = False
+
+    @field_validator("target_chapters")
+    @classmethod
+    def validate_target_chapters(cls, value: int) -> int:
+        """校验本卷节章数量必须为正数。"""
+        if value <= 0:
+            raise ValueError("节章数量必须大于 0")
+        return value
+
+    @field_validator("start_chapter_number")
+    @classmethod
+    def validate_start_chapter_number(cls, value: Optional[int]) -> Optional[int]:
+        """校验起始章节号必须为正数。"""
+        if value is not None and value <= 0:
+            raise ValueError("起始章节号必须大于 0")
+        return value
+
+
 class GenerateCharactersRequest(BaseModel):
     novel_id: int
     outline_text: str
@@ -60,6 +113,26 @@ class PolishCharacterRequest(BaseModel):
 class GenerateCharacterImageRequest(BaseModel):
     character_id: int
     style: str = "realistic"
+
+
+class GenerateStylePromptRequest(BaseModel):
+    novel_id: int
+    requirements: Optional[str] = None
+
+
+class PolishStylePromptRequest(BaseModel):
+    novel_id: int
+    current_prompt: str
+
+
+class GenerateSynopsisRequest(BaseModel):
+    novel_id: int
+    requirements: Optional[str] = None
+
+
+class PolishSynopsisRequest(BaseModel):
+    novel_id: int
+    current_synopsis: str
 
 
 class GenerateContentRequest(BaseModel):
@@ -151,9 +224,19 @@ async def plan_novel_outline_stream(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    一键规划小说大纲（流式输出）
-    生成：卷结构 + 章节标题 + 情节要点 + 角色列表
+    一键规划小说卷级大纲（流式输出）
+    生成：卷结构 + 卷级剧情 + 关键事件
+    生成前会删除该小说的所有现有大纲
     """
+    # 删除该小说的所有现有大纲
+    result = await db.execute(
+        select(Outline).where(Outline.novel_id == request.novel_id)
+    )
+    existing_outlines = result.scalars().all()
+    for outline in existing_outlines:
+        await db.delete(outline)
+    await db.flush()
+
     # 获取小说信息
     result = await db.execute(
         select(Novel).where(Novel.id == request.novel_id)
@@ -171,61 +254,52 @@ async def plan_novel_outline_stream(
         if extra_chapter_volumes
         else f"每卷约{base_chapters_per_volume}章"
     )
-    character_count = max(3, request.target_chapters // 15)
 
     # 构建提示词
-    prompt = f"""请为以下小说规划完整大纲：
+    prompt = f"""请为以下小说规划卷级剧情大纲：
 
 标题：{novel.title}
 类型：{request.genre or novel.genre or "未指定"}
 目标字数：{request.target_words}字
 目标章节数：{request.target_chapters}章
 目标卷数：{request.target_volumes}卷
-章节分配：{chapter_distribution}
+章节分配参考：{chapter_distribution}
 简介：{novel.synopsis or "暂无"}
 风格要求：{request.style_requirements or "无特殊要求"}
 
-请严格按以下 Markdown 格式输出，卷号和章节号必须使用阿拉伯数字，章节号必须是全书连续编号：
+请严格按以下 Markdown 格式输出，卷号必须使用阿拉伯数字：
 
 ## 第1卷：卷标题
 ### 卷概要
-用 2-4 句话概括本卷核心冲突、转折和结局。
+用 3-5 句话概括本卷阶段目标、核心冲突、重要转折、高潮节点和结尾钩子。
 
 ### 关键事件
 - 关键事件1
 - 关键事件2
 - 关键事件3
-
-### 章节列表
-1. 第1章：章节标题 - 简要情节
-2. 第2章：章节标题 - 简要情节
+- 关键事件4
 
 ## 第2卷：卷标题
 ### 卷概要
-用 2-4 句话概括本卷核心冲突、转折和结局。
+用 3-5 句话概括本卷阶段目标、核心冲突、重要转折、高潮节点和结尾钩子。
 
 ### 关键事件
 - 关键事件1
 - 关键事件2
 - 关键事件3
-
-### 章节列表
-3. 第3章：章节标题 - 简要情节
-4. 第4章：章节标题 - 简要情节
-
-## 角色列表
-1. 角色名 - 性别 - 年龄 - 角色类型 - 一句话介绍
-2. 角色名 - 性别 - 年龄 - 角色类型 - 一句话介绍
+- 关键事件4
 
 要求：
-1. 必须输出共{request.target_volumes}卷、共{request.target_chapters}章。
-2. 每章标题要有吸引力，简要情节控制在 30-80 字。
-3. 卷概要要体现阶段目标、核心矛盾、高潮节点和结尾钩子。
-4. 提取约{character_count}个主要角色。
-5. 角色类型包括：主角、主要配角、次要配角、反派等。
+1. 必须只输出共{request.target_volumes}卷的卷级大纲。
+2. 目标章节数只用于估算每卷剧情容量，不要输出章节列表、章节标题或正文。
+3. 不要输出角色列表。
+4. 每卷概要要体现阶段目标、核心矛盾、高潮节点和结尾钩子。
+5. 关键事件要能支撑后续拆分节章，但此处不要展开成具体章节。
 """
 
     system_prompt = f"你是一位资深网文作家，擅长{request.genre or '各类'}小说创作。"
+    if novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
 
     channel, model = await get_enabled_ai_model(db)
 
@@ -244,6 +318,14 @@ async def plan_novel_outline_stream(
                 max_tokens=4000,
                 api_key=channel.api_key,
                 base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "outline",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
             ):
                 accumulated_text.append(chunk)
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
@@ -252,23 +334,9 @@ async def plan_novel_outline_stream(
             full_text = "".join(accumulated_text)
             duration = time.time() - start_time
 
-            # 解析大纲结构（简单实现，按格式提取）
-            outlines_created = await _parse_and_save_outline(
+            outlines_created = await _parse_and_save_volume_outlines(
                 db, request.novel_id, full_text
             )
-
-            # 记录日志
-            log = AIGenerationLog(
-                novel_id=request.novel_id,
-                model_id=model.id,
-                generation_type="outline",
-                input_tokens=len(prompt) // 4,
-                output_tokens=len(full_text) // 4,
-                duration_seconds=duration,
-                status="success",
-            )
-            db.add(log)
-            await db.commit()
 
             yield f"data: {json.dumps({'type': 'done', 'result': {'outlines_count': outlines_created}}, ensure_ascii=False)}\n\n"
 
@@ -316,6 +384,19 @@ CHINESE_DIGITS = {
 CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000, "万": 10000}
 
 
+async def _parse_and_save_volume_outlines(db: AsyncSession, novel_id: int, text: str) -> int:
+    """解析并保存 AI 生成的卷级大纲。"""
+    outline_items = _parse_volume_outline_items(text)
+    if not outline_items:
+        raise ValueError("未解析到有效卷级大纲内容")
+
+    for item in outline_items:
+        db.add(Outline(novel_id=novel_id, **item))
+
+    await db.commit()
+    return len(outline_items)
+
+
 async def _parse_and_save_outline(db: AsyncSession, novel_id: int, text: str) -> int:
     """解析并保存 AI 生成的大纲到数据库。"""
     outline_items = _parse_outline_items(text)
@@ -327,6 +408,33 @@ async def _parse_and_save_outline(db: AsyncSession, novel_id: int, text: str) ->
 
     await db.commit()
     return len(outline_items)
+
+
+def _parse_volume_outline_items(text: str) -> list[dict[str, object]]:
+    """将 AI 生成文本解析为卷级大纲条目。"""
+    items: list[dict[str, object]] = []
+    volume_sections = _split_volume_sections(text)
+
+    for index, (volume_number_text, volume_title, volume_content) in enumerate(volume_sections, start=1):
+        volume_number = _parse_outline_number(volume_number_text) or index
+        key_events = _extract_bullet_items(_extract_markdown_section(volume_content, ["关键事件", "情节要点"]))
+        volume_summary = _extract_markdown_section(volume_content, ["卷概要", "情节概要", "情节要点"])
+        if not volume_summary and key_events:
+            volume_summary = "\n".join(key_events[:5])
+
+        items.append(
+            {
+                "volume_number": volume_number,
+                "chapter_number": None,
+                "title": volume_title.strip() or f"第{volume_number}卷",
+                "plot_summary": volume_summary.strip() if volume_summary else "",
+                "key_events": "\n".join(key_events) if key_events else None,
+                "characters_involved": None,
+                "outline_type": "volume",
+            }
+        )
+
+    return items
 
 
 def _parse_outline_items(text: str) -> list[dict[str, object]]:
@@ -532,6 +640,8 @@ async def generate_characters_stream(
 """
 
     system_prompt = "你是一位角色设计专家，擅长从剧情中提取关键角色。"
+    if novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
 
     channel, model = await get_enabled_ai_model(db)
 
@@ -550,6 +660,14 @@ async def generate_characters_stream(
                 max_tokens=2000,
                 api_key=channel.api_key,
                 base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "character",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
             ):
                 accumulated_text.append(chunk)
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
@@ -562,19 +680,6 @@ async def generate_characters_stream(
             characters_created = await _parse_and_save_characters(
                 db, request.novel_id, full_text
             )
-
-            # 记录日志
-            log = AIGenerationLog(
-                novel_id=request.novel_id,
-                model_id=model.id,
-                generation_type="character",
-                input_tokens=len(prompt) // 4,
-                output_tokens=len(full_text) // 4,
-                duration_seconds=duration,
-                status="success",
-            )
-            db.add(log)
-            await db.commit()
 
             yield f"data: {json.dumps({'type': 'done', 'result': {'characters_count': characters_created}}, ensure_ascii=False)}\n\n"
 
@@ -688,6 +793,8 @@ async def expand_character_stream(
 """
 
     system_prompt = "你是一位角色设计大师，擅长创造立体丰满的人物形象。"
+    if novel and novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
 
     channel, model = await get_enabled_ai_model(db)
 
@@ -706,6 +813,14 @@ async def expand_character_stream(
                 max_tokens=2000,
                 api_key=channel.api_key,
                 base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "character",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
             ):
                 accumulated_text.append(chunk)
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
@@ -716,19 +831,6 @@ async def expand_character_stream(
 
             # 解析并更新角色卡
             await _parse_and_update_character(db, character, full_text)
-
-            # 记录日志
-            log = AIGenerationLog(
-                novel_id=request.novel_id,
-                model_id=model.id,
-                generation_type="character",
-                input_tokens=len(prompt) // 4,
-                output_tokens=len(full_text) // 4,
-                duration_seconds=duration,
-                status="success",
-            )
-            db.add(log)
-            await db.commit()
 
             yield f"data: {json.dumps({'type': 'done', 'result': {'character_id': character.id}}, ensure_ascii=False)}\n\n"
 
@@ -811,6 +913,8 @@ async def polish_character_stream(
 """
 
     system_prompt = "你是一位小说角色设定编辑，擅长在不改变核心设定的前提下润色角色卡。"
+    if novel and novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
     channel, model = await get_enabled_ai_model(db)
 
     async def generate_stream():
@@ -827,6 +931,14 @@ async def polish_character_stream(
                 max_tokens=2200,
                 api_key=channel.api_key,
                 base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "character",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
             ):
                 accumulated_text.append(chunk)
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
@@ -835,18 +947,6 @@ async def polish_character_stream(
             duration = time.time() - start_time
 
             await _parse_and_update_character(db, character, full_text)
-
-            log = AIGenerationLog(
-                novel_id=request.novel_id,
-                model_id=model.id,
-                generation_type="character",
-                input_tokens=len(prompt) // 4,
-                output_tokens=len(full_text) // 4,
-                duration_seconds=duration,
-                status="success",
-            )
-            db.add(log)
-            await db.commit()
 
             yield f"data: {json.dumps({'type': 'done', 'result': {'character_id': character.id}}, ensure_ascii=False)}\n\n"
 
@@ -1073,6 +1173,162 @@ def _text_streaming_response(generator):
     )
 
 
+async def _get_volume_chapter_outlines(db: AsyncSession, novel_id: int, volume_number: int) -> list[Outline]:
+    """获取指定卷下已有的章节级大纲。"""
+    result = await db.execute(
+        select(Outline)
+        .where(
+            Outline.novel_id == novel_id,
+            Outline.outline_type == "chapter",
+            Outline.volume_number == volume_number,
+        )
+        .order_by(
+            Outline.chapter_number.is_(None),
+            Outline.chapter_number.asc(),
+            Outline.id.asc(),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def _get_next_chapter_number(db: AsyncSession, novel_id: int) -> int:
+    """获取当前小说下一个可用章节号。"""
+    result = await db.execute(
+        select(Outline.chapter_number)
+        .where(
+            Outline.novel_id == novel_id,
+            Outline.outline_type == "chapter",
+            Outline.chapter_number.is_not(None),
+        )
+        .order_by(Outline.chapter_number.desc())
+        .limit(1)
+    )
+    max_chapter_number = result.scalar_one_or_none()
+    return (max_chapter_number or 0) + 1
+
+
+async def _save_volume_chapter_outlines(
+    db: AsyncSession,
+    novel_id: int,
+    volume_number: int,
+    text: str,
+    start_chapter_number: int,
+    existing_chapters: list[Outline],
+    replace_existing: bool,
+) -> int:
+    """解析并保存单卷章节级大纲。"""
+    chapter_items, _ = _parse_chapter_items(text, volume_number, start_chapter_number)
+    if not chapter_items:
+        raise ValueError("未解析到有效节章大纲")
+
+    if replace_existing:
+        for chapter_outline in existing_chapters:
+            await db.delete(chapter_outline)
+
+    for item in chapter_items:
+        item["volume_number"] = volume_number
+        item["outline_type"] = "chapter"
+        db.add(Outline(novel_id=novel_id, **item))
+
+    await db.flush()
+    return len(chapter_items)
+
+
+@router.post("/generate-volume-chapters/stream")
+async def generate_volume_chapters_stream(
+    request: GenerateVolumeChaptersRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """根据卷级大纲生成本卷章节级大纲。"""
+    novel = await _get_novel_or_404(db, request.novel_id)
+    volume_outline = await _get_outline_or_404(db, request.outline_id, request.novel_id)
+    if volume_outline.outline_type != "volume":
+        raise HTTPException(status_code=422, detail="只能根据卷级大纲生成节章")
+    if not volume_outline.volume_number:
+        raise HTTPException(status_code=422, detail="卷级大纲缺少卷号，无法生成节章")
+
+    existing_chapters = await _get_volume_chapter_outlines(db, request.novel_id, volume_outline.volume_number)
+    if existing_chapters and not request.replace_existing:
+        raise HTTPException(status_code=422, detail="当前卷已有节章，请确认覆盖后重新生成")
+
+    start_chapter_number = request.start_chapter_number or await _get_next_chapter_number(db, request.novel_id)
+    character_context = await _get_character_context(db, request.novel_id)
+    prompt = f"""请根据以下卷级大纲，生成当前卷的章节级剧情大纲。
+
+小说：{novel.title}
+类型：{novel.genre or '未指定'}
+简介：{novel.synopsis or '暂无'}
+当前卷：第{volume_outline.volume_number}卷《{volume_outline.title}》
+卷概要：{volume_outline.plot_summary or '暂无'}
+关键事件：{volume_outline.key_events or '暂无'}
+主要角色：
+{character_context}
+
+本卷节章数量：{request.target_chapters}章
+起始章节号：第{start_chapter_number}章
+风格要求：{request.style_requirements or '无特殊要求'}
+
+请严格按以下 Markdown 格式输出，只输出章节列表：
+
+### 章节列表
+1. 第{start_chapter_number}章：章节标题 - 50到120字简要情节
+2. 第{start_chapter_number + 1}章：章节标题 - 50到120字简要情节
+
+要求：
+1. 只生成第{volume_outline.volume_number}卷的章节级大纲，不要输出其它卷。
+2. 必须输出共{request.target_chapters}章，章节号从第{start_chapter_number}章开始连续递增。
+3. 不要写正文，不要输出角色列表，不要输出分析说明。
+4. 每章情节要承接卷概要和关键事件，包含冲突、转折、人物动机和章节钩子。
+"""
+    system_prompt = "你是一位资深网文剧情编辑，擅长把卷级剧情拆分为可执行的章节大纲。"
+    if novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
+    channel, model = await get_enabled_ai_model(db)
+
+    async def generate_stream():
+        accumulated_text = []
+        start_time = time.time()
+        try:
+            async for chunk in ai_service.generate_streaming(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                provider=channel.provider,
+                model=model.model_id,
+                temperature=0.75,
+                max_tokens=min(6000, max(2000, request.target_chapters * 180)),
+                api_key=channel.api_key,
+                base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "chapter_outline",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
+            ):
+                accumulated_text.append(chunk)
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+
+            full_text = "".join(accumulated_text)
+            chapters_created = await _save_volume_chapter_outlines(
+                db,
+                request.novel_id,
+                volume_outline.volume_number,
+                full_text,
+                start_chapter_number,
+                existing_chapters,
+                request.replace_existing,
+            )
+            await db.commit()
+            yield f"data: {json.dumps({'type': 'done', 'result': {'volume_outline_id': volume_outline.id, 'chapters_count': chapters_created}}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            await db.rollback()
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return _text_streaming_response(generate_stream())
+
+
 @router.post("/polish-outline/stream")
 async def polish_outline_stream(
     request: PolishOutlineRequest,
@@ -1121,6 +1377,8 @@ async def polish_outline_stream(
 [角色及其本章作用]
 """
     system_prompt = "你是一位资深网文剧情编辑，擅长把章节大纲打磨成可直接写作的剧情蓝图。"
+    if novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
     channel, model = await get_enabled_ai_model(db)
 
     async def generate_stream():
@@ -1136,6 +1394,14 @@ async def polish_outline_stream(
                 max_tokens=1800,
                 api_key=channel.api_key,
                 base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "outline_polish",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
             ):
                 accumulated_text.append(chunk)
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
@@ -1145,15 +1411,6 @@ async def polish_outline_stream(
                 outline.plot_summary = _extract_ai_section(full_text, ["情节梗概"]) or outline.plot_summary
                 outline.key_events = _extract_ai_section(full_text, ["关键事件"]) or outline.key_events
                 outline.characters_involved = _extract_ai_section(full_text, ["涉及角色"]) or outline.characters_involved
-            db.add(AIGenerationLog(
-                novel_id=request.novel_id,
-                model_id=model.id,
-                generation_type="outline_polish",
-                input_tokens=len(prompt) // 4,
-                output_tokens=len(full_text) // 4,
-                duration_seconds=time.time() - start_time,
-                status="success",
-            ))
             await db.commit()
             yield f"data: {json.dumps({'type': 'done', 'result': {'outline_id': outline.id, 'content': full_text}}, ensure_ascii=False)}\n\n"
         except Exception as e:
@@ -1201,6 +1458,8 @@ async def generate_chapter_content_stream(
 4. 不要改写其它章节剧情。
 """
     system_prompt = "你是一位成熟网文作者，擅长根据章节大纲写出连贯、有张力的小说正文。"
+    if novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
     channel, model = await get_enabled_ai_model(db)
 
     async def generate_stream():
@@ -1216,6 +1475,14 @@ async def generate_chapter_content_stream(
                 max_tokens=6000,
                 api_key=channel.api_key,
                 base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "content_generate",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
             ):
                 accumulated_text.append(chunk)
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
@@ -1228,15 +1495,6 @@ async def generate_chapter_content_stream(
                 _update_chapter_content(chapter, full_text)
                 await db.flush()
                 chapter_id = chapter.id
-            db.add(AIGenerationLog(
-                novel_id=request.novel_id,
-                model_id=model.id,
-                generation_type="content_generate",
-                input_tokens=len(prompt) // 4,
-                output_tokens=len(full_text) // 4,
-                duration_seconds=time.time() - start_time,
-                status="success",
-            ))
             await db.commit()
             yield f"data: {json.dumps({'type': 'done', 'result': {'chapter_id': chapter_id, 'content': full_text}}, ensure_ascii=False)}\n\n"
         except Exception as e:
@@ -1283,6 +1541,8 @@ async def rewrite_chapter_content_stream(
 3. 可以调整表达、节奏、对话和细节，让正文更流畅。
 """
     system_prompt = "你是一位小说改稿编辑，擅长在保留核心剧情的前提下重写章节正文。"
+    if novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
     channel, model = await get_enabled_ai_model(db)
 
     async def generate_stream():
@@ -1298,6 +1558,14 @@ async def rewrite_chapter_content_stream(
                 max_tokens=6000,
                 api_key=channel.api_key,
                 base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "content_rewrite",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
             ):
                 accumulated_text.append(chunk)
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
@@ -1305,15 +1573,6 @@ async def rewrite_chapter_content_stream(
             full_text = _clean_generated_content("".join(accumulated_text))
             if request.save:
                 _update_chapter_content(chapter, full_text)
-            db.add(AIGenerationLog(
-                novel_id=request.novel_id,
-                model_id=model.id,
-                generation_type="content_rewrite",
-                input_tokens=len(prompt) // 4,
-                output_tokens=len(full_text) // 4,
-                duration_seconds=time.time() - start_time,
-                status="success",
-            ))
             await db.commit()
             yield f"data: {json.dumps({'type': 'done', 'result': {'chapter_id': chapter.id, 'content': full_text}}, ensure_ascii=False)}\n\n"
         except Exception as e:
@@ -1369,6 +1628,8 @@ async def rewrite_chapter_selection_stream(
 4. 保持角色、剧情事实和叙事视角一致。
 """
     system_prompt = "你是一位小说局部改稿编辑，擅长在保持上下文连贯的前提下改写选中文本。"
+    if novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
     channel, model = await get_enabled_ai_model(db)
 
     async def generate_stream():
@@ -1384,20 +1645,19 @@ async def rewrite_chapter_selection_stream(
                 max_tokens=3000,
                 api_key=channel.api_key,
                 base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "content_selection_rewrite",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
             ):
                 accumulated_text.append(chunk)
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
 
             full_text = _clean_generated_content("".join(accumulated_text))
-            db.add(AIGenerationLog(
-                novel_id=request.novel_id,
-                model_id=model.id,
-                generation_type="content_selection_rewrite",
-                input_tokens=len(prompt) // 4,
-                output_tokens=len(full_text) // 4,
-                duration_seconds=time.time() - start_time,
-                status="success",
-            ))
             await db.commit()
             yield f"data: {json.dumps({'type': 'done', 'result': {'chapter_id': chapter.id, 'content': full_text}}, ensure_ascii=False)}\n\n"
         except Exception as e:
@@ -1440,6 +1700,8 @@ async def polish_chapter_content_stream(
 3. 保留原正文的重要信息，优化语言和节奏。
 """
     system_prompt = "你是一位小说文字润色编辑，擅长提升正文质感但不改变剧情。"
+    if novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
     channel, model = await get_enabled_ai_model(db)
 
     async def generate_stream():
@@ -1455,6 +1717,14 @@ async def polish_chapter_content_stream(
                 max_tokens=6000,
                 api_key=channel.api_key,
                 base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "content_polish",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
             ):
                 accumulated_text.append(chunk)
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
@@ -1462,15 +1732,6 @@ async def polish_chapter_content_stream(
             full_text = _clean_generated_content("".join(accumulated_text))
             if request.save:
                 _update_chapter_content(chapter, full_text)
-            db.add(AIGenerationLog(
-                novel_id=request.novel_id,
-                model_id=model.id,
-                generation_type="content_polish",
-                input_tokens=len(prompt) // 4,
-                output_tokens=len(full_text) // 4,
-                duration_seconds=time.time() - start_time,
-                status="success",
-            ))
             await db.commit()
             yield f"data: {json.dumps({'type': 'done', 'result': {'chapter_id': chapter.id, 'content': full_text}}, ensure_ascii=False)}\n\n"
         except Exception as e:
@@ -1524,3 +1785,398 @@ async def generate_character_image(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"生成图片失败: {str(e)}")
+
+
+@router.post("/generate-style-prompt")
+async def generate_style_prompt(
+    request: GenerateStylePromptRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """生成小说的系统风格提示词"""
+    novel = await _get_novel_or_404(db, request.novel_id)
+
+    prompt = f"""请为以下小说生成一个系统风格提示词：
+
+小说标题：{novel.title}
+类型：{novel.genre or '未指定'}
+简介：{novel.synopsis or '暂无'}
+
+用户要求：{request.requirements or '无'}
+
+请生成一个100-200字的系统风格提示词，用于指导AI创作时保持统一的写作风格、叙事节奏、语言特点和文学性。只输出提示词内容，不要输出其他说明。"""
+
+    system_prompt = "你是一位文学编辑，擅长为小说制定风格指南。"
+    channel, model = await get_enabled_ai_model(db)
+
+    accumulated = []
+    async for chunk in ai_service.generate_streaming(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        provider=channel.provider,
+        model=model.model_id,
+        temperature=0.7,
+        max_tokens=500,
+        api_key=channel.api_key,
+        base_url=channel.base_url,
+        log_context={
+            "novel_id": request.novel_id,
+            "model_id": model.id,
+            "generation_type": "style_prompt",
+            "channel_name": channel.name,
+            "channel_provider": channel.provider,
+            "model_name": model.model_name,
+        },
+    ):
+        accumulated.append(chunk)
+
+    style_prompt = "".join(accumulated).strip()
+    return {"style_prompt": style_prompt}
+
+
+@router.post("/polish-style-prompt")
+async def polish_style_prompt(
+    request: PolishStylePromptRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """润色小说的系统风格提示词"""
+    novel = await _get_novel_or_404(db, request.novel_id)
+
+    prompt = f"""请润色以下小说的系统风格提示词，使其更加精准、专业：
+
+小说标题：{novel.title}
+类型：{novel.genre or '未指定'}
+
+当前风格提示词：
+{request.current_prompt}
+
+请优化这个提示词，保持核心风格定位，提升表述的准确性和指导性。只输出润色后的提示词，不要输出说明。"""
+
+    system_prompt = "你是一位文学编辑，擅长优化写作风格指南。"
+    channel, model = await get_enabled_ai_model(db)
+
+    accumulated = []
+    async for chunk in ai_service.generate_streaming(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        provider=channel.provider,
+        model=model.model_id,
+        temperature=0.6,
+        max_tokens=500,
+        api_key=channel.api_key,
+        base_url=channel.base_url,
+        log_context={
+            "novel_id": request.novel_id,
+            "model_id": model.id,
+            "generation_type": "style_prompt_polish",
+            "channel_name": channel.name,
+            "channel_provider": channel.provider,
+            "model_name": model.model_name,
+        },
+    ):
+        accumulated.append(chunk)
+
+    style_prompt = "".join(accumulated).strip()
+    return {"style_prompt": style_prompt}
+
+
+
+@router.post("/generate-synopsis")
+async def generate_synopsis(
+    request: GenerateSynopsisRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """生成小说简介"""
+    novel = await _get_novel_or_404(db, request.novel_id)
+
+    outlines_result = await db.execute(select(Outline).where(Outline.novel_id == request.novel_id).limit(5))
+    outlines = outlines_result.scalars().all()
+    outline_text = "\n".join([f"- {o.title}: {o.plot_summary or ''}" for o in outlines]) if outlines else "暂无大纲"
+
+    prompt = f"""请为以下小说生成简介：
+
+小说标题：{novel.title}
+类型：{novel.genre or '未指定'}
+大纲片段：
+{outline_text}
+
+用户要求：{request.requirements or '无'}
+
+请生成一个150-300字的小说简介，包含背景设定、主角、核心冲突和故事看点。只输出简介内容，不要输出其他说明。"""
+
+    system_prompt = "你是一位小说编辑，擅长撰写吸引读者的小说简介。"
+    channel, model = await get_enabled_ai_model(db)
+
+    accumulated = []
+    async for chunk in ai_service.generate_streaming(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        provider=channel.provider,
+        model=model.model_id,
+        temperature=0.75,
+        max_tokens=600,
+        api_key=channel.api_key,
+        base_url=channel.base_url,
+        log_context={
+            "novel_id": request.novel_id,
+            "model_id": model.id,
+            "generation_type": "synopsis",
+            "channel_name": channel.name,
+            "channel_provider": channel.provider,
+            "model_name": model.model_name,
+        },
+    ):
+        accumulated.append(chunk)
+
+    synopsis = "".join(accumulated).strip()
+    return {"synopsis": synopsis}
+
+
+@router.post("/polish-synopsis")
+async def polish_synopsis(
+    request: PolishSynopsisRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """润色小说简介"""
+    novel = await _get_novel_or_404(db, request.novel_id)
+
+    prompt = f"""请润色以下小说简介，使其更加精彩、吸引人：
+
+小说标题：{novel.title}
+类型：{novel.genre or '未指定'}
+
+当前简介：
+{request.current_synopsis}
+
+请优化这个简介，保持核心内容，提升表述的吸引力和文学性。只输出润色后的简介，不要输出说明。"""
+
+    system_prompt = "你是一位小说编辑，擅长优化小说简介。"
+    channel, model = await get_enabled_ai_model(db)
+
+    accumulated = []
+    async for chunk in ai_service.generate_streaming(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        provider=channel.provider,
+        model=model.model_id,
+        temperature=0.7,
+        max_tokens=600,
+        api_key=channel.api_key,
+        base_url=channel.base_url,
+        log_context={
+            "novel_id": request.novel_id,
+            "model_id": model.id,
+            "generation_type": "synopsis_polish",
+            "channel_name": channel.name,
+            "channel_provider": channel.provider,
+            "model_name": model.model_name,
+        },
+    ):
+        accumulated.append(chunk)
+
+    synopsis = "".join(accumulated).strip()
+    return {"synopsis": synopsis}
+
+
+@router.post("/generate-synopsis/stream")
+async def generate_synopsis_stream(
+    request: GenerateSynopsisRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """生成小说简介（流式）"""
+    novel = await _get_novel_or_404(db, request.novel_id)
+
+    outlines_result = await db.execute(select(Outline).where(Outline.novel_id == request.novel_id).limit(5))
+    outlines = outlines_result.scalars().all()
+    outline_text = "\n".join([f"- {o.title}: {o.plot_summary or ''}" for o in outlines]) if outlines else "暂无大纲"
+
+    prompt = f"""请为以下小说生成简介：
+
+小说标题：{novel.title}
+类型：{novel.genre or '未指定'}
+大纲片段：
+{outline_text}
+
+用户要求：{request.requirements or '无'}
+
+请生成一个150-300字的小说简介，包含背景设定、主角、核心冲突和故事看点。只输出简介内容，不要输出其他说明。"""
+
+    system_prompt = "你是一位小说编辑，擅长撰写吸引读者的小说简介。"
+    if novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
+    channel, model = await get_enabled_ai_model(db)
+
+    async def generate_stream():
+        try:
+            async for chunk in ai_service.generate_streaming(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                provider=channel.provider,
+                model=model.model_id,
+                temperature=0.75,
+                max_tokens=600,
+                api_key=channel.api_key,
+                base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "synopsis",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
+            ):
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
+
+@router.post("/polish-synopsis/stream")
+async def polish_synopsis_stream(
+    request: PolishSynopsisRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """润色小说简介（流式）"""
+    novel = await _get_novel_or_404(db, request.novel_id)
+
+    prompt = f"""请润色以下小说简介，使其更加精彩、吸引人：
+
+小说标题：{novel.title}
+类型：{novel.genre or '未指定'}
+
+当前简介：
+{request.current_synopsis}
+
+请优化这个简介，保持核心内容，提升表述的吸引力和文学性。只输出润色后的简介，不要输出说明。"""
+
+    system_prompt = "你是一位小说编辑，擅长优化小说简介。"
+    if novel.style_prompt:
+        system_prompt += f"\n\n{novel.style_prompt}"
+    channel, model = await get_enabled_ai_model(db)
+
+    async def generate_stream():
+        try:
+            async for chunk in ai_service.generate_streaming(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                provider=channel.provider,
+                model=model.model_id,
+                temperature=0.7,
+                max_tokens=600,
+                api_key=channel.api_key,
+                base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "synopsis_polish",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
+            ):
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
+
+@router.post("/generate-style-prompt/stream")
+async def generate_style_prompt_stream(
+    request: GenerateStylePromptRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """生成系统风格提示词（流式）"""
+    novel = await _get_novel_or_404(db, request.novel_id)
+
+    prompt = f"""请为以下小说生成一个系统风格提示词：
+
+小说标题：{novel.title}
+类型：{novel.genre or '未指定'}
+简介：{novel.synopsis or '暂无'}
+
+用户要求：{request.requirements or '无'}
+
+请生成一个100-200字的系统风格提示词，用于指导AI创作时保持统一的写作风格、叙事节奏、语言特点和文学性。只输出提示词内容，不要输出其他说明。"""
+
+    system_prompt = "你是一位文学编辑，擅长为小说制定风格指南。"
+    channel, model = await get_enabled_ai_model(db)
+
+    async def generate_stream():
+        try:
+            async for chunk in ai_service.generate_streaming(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                provider=channel.provider,
+                model=model.model_id,
+                temperature=0.7,
+                max_tokens=500,
+                api_key=channel.api_key,
+                base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "style_prompt",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
+            ):
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
+
+@router.post("/polish-style-prompt/stream")
+async def polish_style_prompt_stream(
+    request: PolishStylePromptRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """润色系统风格提示词（流式）"""
+    novel = await _get_novel_or_404(db, request.novel_id)
+
+    prompt = f"""请润色以下小说的系统风格提示词，使其更加精准、专业：
+
+小说标题：{novel.title}
+类型：{novel.genre or '未指定'}
+
+当前风格提示词：
+{request.current_prompt}
+
+请优化这个提示词，保持核心风格定位，提升表述的准确性和指导性。只输出润色后的提示词，不要输出说明。"""
+
+    system_prompt = "你是一位文学编辑，擅长优化写作风格指南。"
+    channel, model = await get_enabled_ai_model(db)
+
+    async def generate_stream():
+        try:
+            async for chunk in ai_service.generate_streaming(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                provider=channel.provider,
+                model=model.model_id,
+                temperature=0.6,
+                max_tokens=500,
+                api_key=channel.api_key,
+                base_url=channel.base_url,
+                log_context={
+                    "novel_id": request.novel_id,
+                    "model_id": model.id,
+                    "generation_type": "style_prompt_polish",
+                    "channel_name": channel.name,
+                    "channel_provider": channel.provider,
+                    "model_name": model.model_name,
+                },
+            ):
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
