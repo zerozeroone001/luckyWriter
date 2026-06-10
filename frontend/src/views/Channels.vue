@@ -241,14 +241,17 @@
       </div>
     </div>
   </div>
+  <ConfirmDialog ref="confirmDialog" />
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { channelApi, modelApi } from '../api'
 import type { AIChannel, AIModel, AvailableModel } from '../types'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const channels = ref<AIChannel[]>([])
+const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
 const loading = ref(false)
 const showCreateDialog = ref(false)
 const editingChannel = ref<AIChannel | null>(null)
@@ -327,7 +330,14 @@ const toggleChannel = async (channel: AIChannel) => {
 }
 
 const deleteChannel = async (id: number) => {
-  if (!confirm('确定删除此渠道？这将同时删除其下所有模型。')) return
+  const confirmed = await confirmDialog.value?.show({
+    title: '删除渠道',
+    message: '确定删除此渠道？这将同时删除其下所有模型。',
+    confirmText: '删除',
+    type: 'danger'
+  })
+
+  if (!confirmed) return
 
   try {
     await channelApi.delete(id)
@@ -457,7 +467,14 @@ const toggleModel = async (model: AIModel) => {
 }
 
 const deleteModel = async (modelId: number) => {
-  if (!confirm('确定删除此模型？')) return
+  const confirmed = await confirmDialog.value?.show({
+    title: '删除模型',
+    message: '确定删除此模型？',
+    confirmText: '删除',
+    type: 'danger'
+  })
+
+  if (!confirmed) return
 
   try {
     await modelApi.delete(modelId)

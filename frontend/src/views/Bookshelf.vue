@@ -158,15 +158,58 @@
 
     <div v-if="showInspirationDialog" class="dialog-overlay" @click.self="closeInspirationDialog">
       <div class="inspiration-dialog">
-        <div class="dialog-header">
+        <div class="dialog-title-bar">
           <h2>✨ 灵感模式</h2>
-          <button class="btn-create-novel" :disabled="isGenerating" @click="generateFromConversation">
-            创建小说
-          </button>
+          <button class="btn-close" @click="closeInspirationDialog">×</button>
+        </div>
+        <div class="dialog-header">
+          <input
+            v-model="conversationTitle"
+            type="text"
+            class="conversation-title-input"
+            placeholder="对话标题"
+          />
+          <div class="header-buttons">
+            <button class="btn-secondary" @click="openConversationList">
+              对话历史
+            </button>
+            <button class="btn-create-novel" :disabled="isGenerating" @click="generateFromConversation">
+              创建小说
+            </button>
+          </div>
         </div>
         <div ref="chatContainer" class="chat-container">
           <div v-for="(msg, index) in inspirationMessages" :key="index" class="chat-message" :class="msg.role">
-            <div class="message-content">{{ msg.content }}</div>
+            <div class="message-content">
+              <div v-if="isGenerating && index === inspirationMessages.length - 1 && msg.content === ''" class="typing-indicator">
+                <span></span><span></span><span></span>
+              </div>
+              <div v-else v-html="formatMessageContent(msg.content)"></div>
+            </div>
+            <div class="message-footer">
+              <span class="message-time">{{ formatMessageTime(msg.timestamp || new Date()) }}</span>
+              <div class="message-actions">
+                <button class="action-btn" @click="copyMessage(msg.content)" title="复制">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                </button>
+                <template v-if="msg.role === 'user'">
+                  <button class="action-btn" @click="editMessage(index)" title="编辑">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                  </button>
+                  <button class="action-btn" @click="resendMessage(index)" title="重新发送">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+                    </svg>
+                  </button>
+                </template>
+              </div>
+            </div>
           </div>
         </div>
         <div class="chat-input-area">
@@ -183,7 +226,38 @@
         </div>
       </div>
     </div>
+
+    <div v-if="showConversationListDialog" class="dialog-overlay" @click.self="showConversationListDialog = false">
+      <div class="dialog conversation-list-dialog">
+        <h2>对话历史</h2>
+        <div v-if="conversationList.length === 0" class="empty-state">
+          <p>暂无对话历史</p>
+        </div>
+        <div v-else class="conversation-list">
+          <div
+            v-for="conv in conversationList"
+            :key="conv.id"
+            class="conversation-item"
+            @click="loadConversation(conv.id)"
+          >
+            <div class="conversation-info">
+              <h3>{{ conv.title }}</h3>
+              <p>{{ formatDate(conv.updated_at) }}</p>
+            </div>
+            <button class="btn-delete" @click.stop="deleteConversation(conv.id)">
+              删除
+            </button>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-secondary" @click="showConversationListDialog = false">
+            关闭
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
+  <ConfirmDialog ref="confirmDialog" />
 </template>
 
 <script setup lang="ts">
@@ -192,12 +266,14 @@ import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useNovelStore } from '../stores/novel'
 import type { Novel, NovelCreate } from '../types'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 type SortBy = 'updated_desc' | 'created_desc' | 'title_asc' | 'progress_desc'
 
 const router = useRouter()
 const novelStore = useNovelStore()
 const { novels, loading } = storeToRefs(novelStore)
+const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
 
 const showCreateDialog = ref(false)
 const submitting = ref(false)
@@ -210,11 +286,15 @@ const sortBy = ref<SortBy>('updated_desc')
 const newNovel = ref<NovelCreate>(createDefaultNovel())
 
 const showInspirationDialog = ref(false)
+const showConversationListDialog = ref(false)
 const inspirationStep = ref(0)
-const inspirationMessages = ref<Array<{ role: 'ai' | 'user'; content: string }>>([])
+const inspirationMessages = ref<Array<{ role: 'ai' | 'user'; content: string; timestamp?: Date | string }>>([])
 const userInput = ref('')
 const isGenerating = ref(false)
 const chatContainer = ref<HTMLDivElement | null>(null)
+const conversationTitle = ref('')
+const currentConversationId = ref<number | null>(null)
+const conversationList = ref<Array<{ id: number; title: string; updated_at: string }>>([])
 const inspirationData = ref({
   title: '',
   synopsis: '',
@@ -345,7 +425,12 @@ const handleCreate = async () => {
 
 const deleteNovel = async (id: number) => {
   const novel = novels.value.find((item) => item.id === id)
-  const confirmed = window.confirm(`确定要删除《${novel?.title || '这本小说'}》吗？此操作不可恢复。`)
+  const confirmed = await confirmDialog.value?.show({
+    title: '删除小说',
+    message: `确定要删除《${novel?.title || '这本小说'}》吗？此操作不可恢复。`,
+    confirmText: '删除',
+    type: 'danger'
+  })
 
   if (!confirmed) return
 
@@ -406,14 +491,127 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 const openInspirationMode = () => {
   showInspirationDialog.value = true
   inspirationStep.value = 0
+  conversationTitle.value = '新对话'
+  currentConversationId.value = null
   inspirationMessages.value = [
     {
       role: 'ai',
-      content: '你好！我是你的小说创作助手。\n\n我可以帮你：梳理故事创意、生成剧情大纲、设计角色人物、创作章节内容、提供写作建议等。\n\n告诉我你的想法，我们一起创作吧！'
+      content: '你好！我是你的小说创作助手。\n\n我可以帮你：梳理故事创意、生成剧情大纲、设计角色人物、创作章节内容、提供写作建议等。\n\n告诉我你的想法，我们一起创作吧！',
+      timestamp: new Date()
     }
   ]
   userInput.value = ''
   inspirationData.value = { title: '', synopsis: '', style_prompt: '', genre: '' }
+}
+
+const formatMessageTime = (timestamp: Date | string) => {
+  const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp
+  const month = date.getMonth() + 1
+  const day = date.getDate()
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+  return `${month}/${day} ${hours}:${minutes}:${seconds}`
+}
+
+const formatMessageContent = (content: string) => {
+  return content.replace(/\n/g, '<br>')
+}
+
+const copyMessage = (content: string) => {
+  navigator.clipboard.writeText(content).then(() => {
+    console.log('已复制到剪贴板')
+  })
+}
+
+const editMessage = (index: number) => {
+  const msg = inspirationMessages.value[index]
+  if (msg.role === 'user') {
+    userInput.value = msg.content
+    inspirationMessages.value = inspirationMessages.value.slice(0, index)
+  }
+}
+
+const resendMessage = async (index: number) => {
+  const msg = inspirationMessages.value[index]
+  if (msg.role === 'user') {
+    inspirationMessages.value = inspirationMessages.value.slice(0, index)
+    userInput.value = msg.content
+    await sendMessage()
+  }
+}
+
+const openConversationList = async () => {
+  try {
+    const response = await fetch('http://localhost:8000/api/conversations')
+    conversationList.value = await response.json()
+    showConversationListDialog.value = true
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, '加载对话列表失败')
+  }
+}
+
+const loadConversation = async (conversationId: number) => {
+  try {
+    const response = await fetch(`http://localhost:8000/api/conversations/${conversationId}`)
+    const data = await response.json()
+
+    conversationTitle.value = data.title
+    currentConversationId.value = data.id
+    inspirationMessages.value = data.messages
+    showConversationListDialog.value = false
+    showInspirationDialog.value = true
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, '加载对话失败')
+  }
+}
+
+const deleteConversation = async (conversationId: number) => {
+  const confirmed = await confirmDialog.value?.show({
+    title: '删除对话',
+    message: '确定要删除这个对话吗？',
+    confirmText: '删除',
+    type: 'danger'
+  })
+
+  if (!confirmed) return
+
+  try {
+    await fetch(`http://localhost:8000/api/conversations/${conversationId}`, {
+      method: 'DELETE'
+    })
+    conversationList.value = conversationList.value.filter(c => c.id !== conversationId)
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, '删除对话失败')
+  }
+}
+
+const saveConversation = async () => {
+  try {
+    if (currentConversationId.value) {
+      await fetch(`http://localhost:8000/api/conversations/${currentConversationId.value}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: conversationTitle.value,
+          messages: inspirationMessages.value
+        })
+      })
+    } else {
+      const response = await fetch('http://localhost:8000/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: conversationTitle.value,
+          messages: inspirationMessages.value
+        })
+      })
+      const data = await response.json()
+      currentConversationId.value = data.id
+    }
+  } catch (error) {
+    console.error('保存对话失败:', error)
+  }
 }
 
 const closeInspirationDialog = () => {
@@ -425,7 +623,7 @@ const sendMessage = async () => {
   const message = userInput.value.trim()
   if (!message || isGenerating.value) return
 
-  inspirationMessages.value.push({ role: 'user', content: message })
+  inspirationMessages.value.push({ role: 'user', content: message, timestamp: new Date() })
   userInput.value = ''
   isGenerating.value = true
 
@@ -451,7 +649,7 @@ const sendMessage = async () => {
     const reader = response.body?.getReader()
     const decoder = new TextDecoder()
 
-    inspirationMessages.value.push({ role: 'ai', content: '' })
+    inspirationMessages.value.push({ role: 'ai', content: '', timestamp: new Date() })
     const aiMsgIndex = inspirationMessages.value.length - 1
 
     if (reader) {
@@ -480,9 +678,11 @@ const sendMessage = async () => {
         }
       }
     }
+
+    await saveConversation()
   } catch (error) {
     errorMessage.value = getErrorMessage(error, '对话失败')
-    inspirationMessages.value.push({ role: 'ai', content: `对话失败：${errorMessage.value}` })
+    inspirationMessages.value.push({ role: 'ai', content: `对话失败：${errorMessage.value}`, timestamp: new Date() })
   } finally {
     isGenerating.value = false
   }
@@ -508,7 +708,7 @@ const generateFromConversation = async () => {
   try {
     const decoder = new TextDecoder()
 
-    inspirationMessages.value.push({ role: 'ai', content: '正在生成小说标题...' })
+    inspirationMessages.value.push({ role: 'ai', content: '正在生成小说标题...', timestamp: new Date() })
     const titleResponse = await fetch('http://localhost:8000/api/ai/generate-title-from-conversation/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -539,7 +739,7 @@ const generateFromConversation = async () => {
     inspirationData.value.title = title.trim()
     inspirationMessages.value[inspirationMessages.value.length - 1].content = `✓ 标题：${title.trim()}`
 
-    inspirationMessages.value.push({ role: 'ai', content: '正在生成小说简介...' })
+    inspirationMessages.value.push({ role: 'ai', content: '正在生成小说简介...', timestamp: new Date() })
     const synopsisResponse = await fetch('http://localhost:8000/api/ai/generate-synopsis-from-conversation/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -570,7 +770,7 @@ const generateFromConversation = async () => {
     inspirationData.value.synopsis = synopsis.trim()
     inspirationMessages.value[inspirationMessages.value.length - 1].content = `✓ 简介：\n${synopsis.trim()}`
 
-    inspirationMessages.value.push({ role: 'ai', content: '正在生成风格提示词...' })
+    inspirationMessages.value.push({ role: 'ai', content: '正在生成风格提示词...', timestamp: new Date() })
     const styleResponse = await fetch('http://localhost:8000/api/ai/generate-style-prompt-from-conversation/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -604,7 +804,7 @@ const generateFromConversation = async () => {
     await createNovelFromInspiration()
   } catch (error) {
     errorMessage.value = getErrorMessage(error, '生成失败')
-    inspirationMessages.value.push({ role: 'ai', content: `生成失败：${errorMessage.value}` })
+    inspirationMessages.value.push({ role: 'ai', content: `生成失败：${errorMessage.value}`, timestamp: new Date() })
   } finally {
     isGenerating.value = false
   }
@@ -629,7 +829,7 @@ const createNovelFromInspiration = async () => {
         .map(m => `${m.role === 'user' ? '用户' : 'AI'}：${m.content}`)
         .join('\n\n')
 
-      inspirationMessages.value.push({ role: 'ai', content: '正在生成剧情大纲...' })
+      inspirationMessages.value.push({ role: 'ai', content: '正在生成剧情大纲...', timestamp: new Date() })
 
       const outlineResponse = await fetch('http://localhost:8000/api/ai/generate-outline-from-conversation/stream', {
         method: 'POST',
@@ -661,7 +861,7 @@ const createNovelFromInspiration = async () => {
       }
 
       inspirationMessages.value[inspirationMessages.value.length - 1].content = '✓ 剧情大纲已生成'
-      inspirationMessages.value.push({ role: 'ai', content: '🎉 小说创建成功！正在跳转到工作区...' })
+      inspirationMessages.value.push({ role: 'ai', content: '🎉 小说创建成功！正在跳转到工作区...', timestamp: new Date() })
 
       setTimeout(() => {
         router.push(`/novel/${newNovel.id}`)
@@ -670,7 +870,7 @@ const createNovelFromInspiration = async () => {
     }
   } catch (error) {
     errorMessage.value = getErrorMessage(error, '创建小说失败')
-    inspirationMessages.value.push({ role: 'ai', content: `创建失败：${errorMessage.value}` })
+    inspirationMessages.value.push({ role: 'ai', content: `创建失败：${errorMessage.value}`, timestamp: new Date() })
   }
 }
 </script>
@@ -1064,25 +1264,77 @@ const createNovelFromInspiration = async () => {
 .inspiration-dialog {
   background: var(--card-bg);
   border-radius: 8px;
-  padding: 30px;
+  padding: 0;
   width: 60%;
   max-width: 90%;
-  height: 600px;
-  max-height: 80vh;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
+}
+
+.dialog-title-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dialog-title-bar h2 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--text-primary);
+}
+
+.btn-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 28px;
+  color: var(--text-secondary);
+  line-height: 1;
+  padding: 0;
+}
+
+.btn-close:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
 }
 
 .dialog-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  padding: 16px 24px;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .dialog-header h2 {
   margin: 0;
   font-size: 24px;
+}
+
+.conversation-title-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  background: var(--card-bg);
+  color: var(--text-primary);
+}
+
+.header-buttons {
+  display: flex;
+  gap: 8px;
 }
 
 .btn-create-novel {
@@ -1107,19 +1359,30 @@ const createNovelFromInspiration = async () => {
 .chat-container {
   flex: 1;
   overflow-y: auto;
-  margin-bottom: 20px;
-  padding: 10px;
+  padding: 16px 24px;
   background: var(--panel-bg-soft);
-  border-radius: 6px;
+  min-height: 600px;
 }
 
 .chat-message {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   padding: 12px 16px;
-  border-radius: 8px;
-  max-width: 80%;
+  border-radius: 12px;
+  max-width: 75%;
   white-space: pre-wrap;
   word-wrap: break-word;
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .chat-message.ai {
@@ -1132,19 +1395,106 @@ const createNovelFromInspiration = async () => {
   background: var(--success-bg);
   border: 1px solid var(--success-border);
   margin-left: auto;
-  text-align: right;
 }
 
 .message-content {
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.typing-indicator {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background: var(--text-secondary);
+  border-radius: 50%;
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.7;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+
+.message-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.chat-message.user .message-footer {
+  flex-direction: row-reverse;
+}
+
+.message-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.message-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.chat-message:hover .message-actions {
+  opacity: 1;
+}
+
+.action-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.action-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.action-btn svg {
+  display: block;
 }
 
 .chat-input-area {
   display: flex;
   gap: 10px;
   align-items: flex-end;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color);
+  background: var(--card-bg);
 }
 
 .chat-input-area textarea {
@@ -1156,6 +1506,7 @@ const createNovelFromInspiration = async () => {
   background: var(--card-bg);
   resize: vertical;
   min-height: 60px;
+  max-height: 150px;
   font-family: inherit;
 }
 
@@ -1185,6 +1536,50 @@ const createNovelFromInspiration = async () => {
 
 .chat-input-area button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--success-color) 84%, var(--text-primary));
+}
+
+.conversation-list-dialog {
+  width: 600px;
+  max-width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.conversation-list {
+  margin-bottom: 20px;
+}
+
+.conversation-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: var(--panel-bg-soft);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.conversation-item:hover {
+  background: var(--hover-bg);
+}
+
+.conversation-info {
+  flex: 1;
+}
+
+.conversation-info h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.conversation-info p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
 @media (max-width: 900px) {

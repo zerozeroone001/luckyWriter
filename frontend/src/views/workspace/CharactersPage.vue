@@ -208,6 +208,7 @@
       </div>
     </div>
   </div>
+  <ConfirmDialog ref="confirmDialog" />
 </template>
 
 <script setup lang="ts">
@@ -216,6 +217,7 @@ import { storeToRefs } from 'pinia'
 import { aiApi, outlineApi } from '../../api'
 import { useCharacterStore } from '../../stores/character'
 import type { Character, CharacterCreate, CharacterUpdate, Outline } from '../../types'
+import ConfirmDialog from '../../components/ConfirmDialog.vue'
 
 const props = defineProps<{
   novelId: number
@@ -223,6 +225,7 @@ const props = defineProps<{
 
 const characterStore = useCharacterStore()
 const { characters, loading: isLoadingCharacters } = storeToRefs(characterStore)
+const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
 
 type CharacterForm = {
   name: string
@@ -459,7 +462,13 @@ const saveCharacter = async () => {
 }
 
 const deleteCharacter = async (character: Character) => {
-  const confirmed = window.confirm(`确定要删除角色《${character.name}》吗？此操作不可恢复。`)
+  const confirmed = await confirmDialog.value?.show({
+    title: '删除角色',
+    message: `确定要删除角色《${character.name}》吗？此操作不可恢复。`,
+    confirmText: '删除',
+    type: 'danger'
+  })
+
   if (!confirmed) return
 
   characterError.value = ''
@@ -481,7 +490,13 @@ const batchDeleteSelectedCharacters = async () => {
   if (!hasSelectedCharacters.value || isCharacterBusy.value) return
 
   const selectedIds = [...selectedCharacterIds.value]
-  const confirmed = window.confirm(`确定要删除选中的 ${selectedIds.length} 个角色吗？此操作不可恢复。`)
+  const confirmed = await confirmDialog.value?.show({
+    title: '批量删除角色',
+    message: `确定要删除选中的 ${selectedIds.length} 个角色吗？此操作不可恢复。`,
+    confirmText: '删除',
+    type: 'danger'
+  })
+
   if (!confirmed) return
 
   characterError.value = ''

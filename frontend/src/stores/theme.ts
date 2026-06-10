@@ -303,6 +303,7 @@ export const useThemeStore = defineStore('theme', () => {
       document.documentElement.style.setProperty(variableName, value)
     }
 
+    document.documentElement.setAttribute('data-theme', theme.key)
     localStorage.setItem(THEME_STORAGE_KEY, theme.key)
   }
 

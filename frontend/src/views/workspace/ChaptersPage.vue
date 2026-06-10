@@ -285,12 +285,14 @@
       </div>
     </div>
   </div>
+  <ConfirmDialog ref="confirmDialog" />
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { aiApi, chapterApi, outlineApi } from '../../api'
 import type { Chapter, ChapterCreate, ChapterUpdate, Outline, OutlineUpdate } from '../../types'
+import ConfirmDialog from '../../components/ConfirmDialog.vue'
 
 const props = defineProps<{
   novelId: number
@@ -361,6 +363,7 @@ const streamedContent = ref('')
 const selectionRewriteContent = ref('')
 const outlines = ref<Outline[]>([])
 const chapters = ref<Chapter[]>([])
+const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
 const chapterForm = ref<ChapterForm>(createChapterForm())
 
 const chapterAiActionLabels: Record<ChapterAiAction, string> = {
@@ -585,7 +588,13 @@ const closeChapterDetail = () => {
 }
 
 const deleteChapter = async (chapter: Chapter) => {
-  const confirmed = window.confirm(`确定要删除章节《${chapter.title}》吗？此操作不可恢复。`)
+  const confirmed = await confirmDialog.value?.show({
+    title: '删除章节',
+    message: `确定要删除章节《${chapter.title}》吗？此操作不可恢复。`,
+    confirmText: '删除',
+    type: 'danger'
+  })
+
   if (!confirmed) return
 
   chapterError.value = ''

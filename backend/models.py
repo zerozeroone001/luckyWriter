@@ -163,3 +163,14 @@ class AIGenerationLog(Base):
     status = Column(String(20), default="success", comment="状态：success/failed/stopped")
     error_message = Column(Text, comment="错误信息")
     created_at = Column(DateTime, default=func.now(), comment="创建时间")
+
+
+class InspirationConversation(Base):
+    """灵感对话历史表"""
+    __tablename__ = "inspiration_conversations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(200), nullable=False, comment="对话标题")
+    messages = Column(Text, nullable=False, comment="对话消息（JSON数组）")
+    created_at = Column(DateTime, default=func.now(), comment="创建时间")
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), comment="更新时间")

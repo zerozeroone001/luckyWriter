@@ -305,12 +305,14 @@
       </div>
     </div>
   </div>
+  <ConfirmDialog ref="confirmDialog" />
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { aiApi, outlineApi } from '../../api'
 import type { Outline, OutlineCreate, OutlineUpdate } from '../../types'
+import ConfirmDialog from '../../components/ConfirmDialog.vue'
 
 const props = defineProps<{
   novelId: number
@@ -359,6 +361,7 @@ const volumeChapterStreamedContent = ref('')
 const expandedVolumeIds = ref<Record<number, boolean>>({})
 const expandedChapterIds = ref<Record<number, boolean>>({})
 const outlines = ref<Outline[]>([])
+const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
 const outlineForm = ref<OutlineForm>(createOutlineForm())
 const volumeChapterForm = ref<VolumeChapterForm>(createVolumeChapterForm())
 const planRequest = ref({
@@ -522,7 +525,14 @@ const deleteOutline = async (outline: Outline) => {
   const message = childCount > 0
     ? `确定要删除大纲项《${outline.title}》吗？此操作会同时删除下方 ${childCount} 个节章，且不可恢复。`
     : `确定要删除大纲项《${outline.title}》吗？此操作不可恢复。`
-  const confirmed = window.confirm(message)
+
+  const confirmed = await confirmDialog.value?.show({
+    title: '删除大纲',
+    message,
+    confirmText: '删除',
+    type: 'danger'
+  })
+
   if (!confirmed) return
 
   outlineError.value = ''
@@ -795,7 +805,13 @@ const toggleSelection = (outlineId: number) => {
 const batchDeleteOutlines = async () => {
   if (selectedOutlineIds.value.length === 0) return
 
-  const confirmed = window.confirm(`确定要删除选中的 ${selectedOutlineIds.value.length} 个大纲项吗？此操作不可恢复。`)
+  const confirmed = await confirmDialog.value?.show({
+    title: '批量删除大纲',
+    message: `确定要删除选中的 ${selectedOutlineIds.value.length} 个大纲项吗？此操作不可恢复。`,
+    confirmText: '删除',
+    type: 'danger'
+  })
+
   if (!confirmed) return
 
   outlineError.value = ''

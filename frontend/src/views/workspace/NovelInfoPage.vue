@@ -190,6 +190,7 @@
       </div>
     </div>
   </div>
+  <ConfirmDialog ref="confirmDialog" />
 </template>
 
 <script setup lang="ts">
@@ -199,6 +200,7 @@ import { useRouter } from 'vue-router'
 import { useNovelStore } from '../../stores/novel'
 import { novelApi } from '../../api'
 import type { Novel, NovelStats } from '../../types'
+import ConfirmDialog from '../../components/ConfirmDialog.vue'
 
 const props = defineProps<{
   novelId: number
@@ -207,6 +209,7 @@ const props = defineProps<{
 const router = useRouter()
 const novelStore = useNovelStore()
 const { currentNovel: novel, loading } = storeToRefs(novelStore)
+const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
 
 type NovelInfoForm = {
   title: string
@@ -380,13 +383,14 @@ const loadStats = async () => {
 const deleteNovel = async () => {
   if (!novel.value) return
 
-  const confirmed = window.confirm(
-    `确定要删除小说《${novel.value.title}》吗？\n\n此操作将删除小说及其所有相关数据（大纲、章节、角色等），且不可恢复！`
-  )
-  if (!confirmed) return
+  const confirmed = await confirmDialog.value?.show({
+    title: '删除小说',
+    message: `确定要删除小说《${novel.value.title}》吗？\n\n此操作将删除小说及其所有相关数据（大纲、章节、角色等），且不可恢复！`,
+    confirmText: '删除',
+    type: 'danger'
+  })
 
-  const doubleConfirmed = window.confirm('再次确认：真的要删除这部小说吗？')
-  if (!doubleConfirmed) return
+  if (!confirmed) return
 
   try {
     await novelApi.delete(props.novelId)
